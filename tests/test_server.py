@@ -189,6 +189,12 @@ class ServerTests(unittest.TestCase):
 
 
 class HubTests(unittest.TestCase):
+    def test_server_start_does_not_require_hostname_resolution(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with patch.object(server.socket, 'getfqdn', side_effect=AssertionError('DNS must not be required')):
+                srv = server.create_server('127.0.0.1', 0, Path(tmp), '127.0.0.1')
+                srv.server_close()
+
     def test_invalid_bind_and_advertised_addresses_rejected_before_start(self):
         with tempfile.TemporaryDirectory() as tmp:
             for bind, advertised in [('192.0.2.1', '127.0.0.1'), ('0.0.0.0', '0.0.0.0'), ('0.0.0.0', '224.0.0.1')]:

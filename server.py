@@ -17,6 +17,7 @@ import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from socketserver import TCPServer
 from urllib.parse import parse_qs, urlsplit
 
 VERSION = '0.1.0'
@@ -171,6 +172,12 @@ class AppServer(ThreadingHTTPServer):
     def __init__(self, address, handler):
         self.slots = threading.BoundedSemaphore(MAX_CONNECTIONS)
         super().__init__(address, handler)
+
+    def server_bind(self):
+        # HTTPServer resolves getfqdn() before listening. macOS local-network
+        # privacy can stall that lookup; numeric LAN addresses need no DNS.
+        TCPServer.server_bind(self)
+        self.server_name, self.server_port = self.server_address[:2]
 
     def process_request(self, request, client_address):
         if not self.slots.acquire(blocking=False):

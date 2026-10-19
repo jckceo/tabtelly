@@ -24,7 +24,7 @@ The intended release is **experimental 0.1.0**, under the MIT license. It is a u
 
 The prototype contained private device/network details, unauthenticated signaling/control endpoints, insufficient request validation, unbounded relay state, a machine-specific shell launcher, and an experimental congestion workaround enabled by default. These were removed or addressed as described above and in [SECURITY_REVIEW.md](docs/SECURITY_REVIEW.md).
 
-Independent review also identified missing sender-stop/resource-control tests, publicly exposed health identity metadata, and Host normalization edge cases. Tests were added, health identity became loopback-only, and authorities now normalize case/default HTTP ports without relaxing origin boundaries. Frontend review repaired capture cancellation races, pre-offer ICE loss, and authenticated latency synchronization. The first GitHub run exposed a pip-cache path configuration error, which was corrected. The Python matrix also revealed that decoder recursion thresholds differ across interpreter versions; the server now enforces its own 32-container JSON nesting limit and rejects numeric overflow, with independently reproduced regression cases.
+Independent review also identified missing sender-stop/resource-control tests, publicly exposed health identity metadata, and Host normalization edge cases. Tests were added, health identity became loopback-only, and authorities now normalize case/default HTTP ports without relaxing origin boundaries. Frontend review repaired capture cancellation races, pre-offer ICE loss, and authenticated latency synchronization. The first GitHub run exposed a pip-cache path configuration error, which was corrected. The Python matrix also revealed that decoder recursion thresholds differ across interpreter versions; the server now enforces its own 32-container JSON nesting limit and rejects numeric overflow, with independently reproduced regression cases. Hosted macOS runs also exposed the standard HTTP server's blocking hostname lookup before listening; the relay and HTTP test fixtures now bind numeric addresses without that lookup, and local test health probes explicitly bypass proxies. Both dependencies have regression tests. The [GitHub runner issue](https://github.com/actions/runner-images/issues/14409) documents the macOS startup behavior.
 
 Runtime dependencies are Python's standard library and the browsers already used to send/receive. npm packages and Ruff are development-only, version-pinned. There is no pip install step for using the application.
 
@@ -34,7 +34,7 @@ Local validation ran on **macOS arm64, Python 3.11.9, Node.js 26.5.0, Ruff 0.17.
 
 | Check | Actual result |
 | --- | --- |
-| `python3 -m unittest discover -s tests -v` | **44 passed**: 13 launcher, 27 server/boundary, 4 release/audit tests |
+| `python3 -m unittest discover -s tests -v` | **46 passed**: 14 launcher, 28 server/boundary, 4 release/audit tests |
 | `npm test` | **Passed**: module and inline ESLint, script parsing, and **11 frontend unit tests** |
 | Receiver compatibility syntax | Acorn ECMAScript 5 parse and lint passed; this checks syntax, not every old-TV API/CSS behavior |
 | `npm run test:e2e` | **4 passed** using Chromium: wrong/right keyboard pairing; actual WebRTC generated video/audio; switch/reload/busy sender/stop; narrow sender and 720p receiver layout; unsupported WebRTC receiver |

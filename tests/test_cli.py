@@ -9,12 +9,14 @@ import tempfile
 import textwrap
 import time
 import unittest
-from urllib.request import urlopen
+from unittest.mock import patch
+from urllib.request import build_opener, ProxyHandler
 
 
 ROOT = Path(__file__).resolve().parents[1]
 CLI = ROOT / "tabtelly"
 COMPAT_CLI = ROOT / "tabcast"
+LOCAL_OPENER = build_opener(ProxyHandler({}))
 
 
 FAKE_SERVER = r'''
@@ -23,6 +25,12 @@ import os
 import threading
 from pathlib import Path
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from socketserver import TCPServer
+
+class NumericHTTPServer(ThreadingHTTPServer):
+    def server_bind(self):
+        TCPServer.server_bind(self)
+        self.server_name, self.server_port = self.server_address[:2]
 
 PORT = int(os.environ["TABCAST_PORT"])
 RUNTIME = Path(os.environ["TABCAST_RUNTIME_DIR"])
@@ -84,7 +92,7 @@ class Handler(BaseHTTPRequestHandler):
             return
         return self.send_json({"error": "unauthorized"}, 401)
 
-ThreadingHTTPServer((os.environ.get("TABCAST_BIND", "127.0.0.1"), PORT), Handler).serve_forever()
+NumericHTTPServer((os.environ.get("TABCAST_BIND", "127.0.0.1"), PORT), Handler).serve_forever()
 '''
 
 
@@ -92,6 +100,12 @@ OTHER_SERVER = r'''
 import json
 import os
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from socketserver import TCPServer
+
+class NumericHTTPServer(ThreadingHTTPServer):
+    def server_bind(self):
+        TCPServer.server_bind(self)
+        self.server_name, self.server_port = self.server_address[:2]
 
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, *args):
@@ -109,7 +123,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", "0")
         self.end_headers()
 
-ThreadingHTTPServer(("127.0.0.1", int(os.environ["PORT"])), Handler).serve_forever()
+NumericHTTPServer(("127.0.0.1", int(os.environ["PORT"])), Handler).serve_forever()
 '''
 
 
@@ -123,7 +137,7 @@ def wait_for_http(port):
     deadline = time.monotonic() + 5
     while time.monotonic() < deadline:
         try:
-            with urlopen(f"http://127.0.0.1:{port}/health", timeout=0.2):
+            with LOCAL_OPENER.open(f"http://127.0.0.1:{port}/health", timeout=0.2):
                 return
         except OSError:
             time.sleep(0.05)
@@ -238,6 +252,15 @@ class LauncherTests(unittest.TestCase):
         second_status = self.run_cli("status", port=second)
         self.assertEqual(second_status.returncode, 0, second_status.stderr + second_status.stdout)
         self.assertEqual(self.run_cli("stop", port=second).returncode, 0)
+
+    def test_auxiliary_health_checks_ignore_proxy_environment(self):
+        proxy_env = {
+            'HTTP_PROXY': 'http://127.0.0.1:1', 'http_proxy': 'http://127.0.0.1:1',
+            'HTTPS_PROXY': 'http://127.0.0.1:1', 'https_proxy': 'http://127.0.0.1:1',
+            'NO_PROXY': '', 'no_proxy': '',
+        }
+        with patch.dict(os.environ, proxy_env), patch('urllib.request._opener', None):
+            self.start_other_server(free_port(), {'app': 'test-local-service'})
 
     def test_occupied_port_is_not_killed(self):
         port = free_port()
