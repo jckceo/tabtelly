@@ -14,7 +14,7 @@ TabTelly depends on browser APIs and direct LAN connectivity. A TV brand or oper
 | Multiple senders or receivers | Unsupported | One current sender and one receiver |
 | Isolated guest networks | Unsupported | Direct peer reachability is required |
 
-The [first complete passing CI run](https://github.com/jckceo/tabtelly/actions/runs/39306997735) covers Python 3.10–3.14 on Linux and Python 3.10/3.14 on macOS and Windows, plus Chromium media integration on Linux. POSIX symlink tests are skipped on Windows. This table is deliberately conservative. Real-device reports are welcome through the compatibility issue form.
+The [CI matrix](https://github.com/jckceo/tabtelly/actions/workflows/ci.yml) covers Python 3.10–3.14 on Linux and Python 3.10/3.14 on macOS and Windows, plus Chromium media integration on Linux. POSIX symlink tests are skipped on Windows. This table is deliberately conservative. Real-device reports are welcome through the compatibility issue form.
 
 ## Sender requirements
 

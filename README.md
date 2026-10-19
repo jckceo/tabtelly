@@ -87,7 +87,7 @@ Only `0.0.0.0` and `127.0.0.1` are accepted bind values. A loopback-only bind ca
 
 ## Compatibility
 
-TabTelly currently targets desktop Chrome on macOS. Linux and Windows are experimental. [Command CI has passed on Linux, Windows, and macOS](https://github.com/jckceo/tabtelly/actions/runs/39306997735); this does not constitute native screen-capture or real-TV validation. Receiver compatibility depends on the TV browser's WebRTC implementation. The original prototype worked with a legacy Chromium-based Hisense VIDAA browser, but current real-hardware retesting is not available.
+TabTelly currently targets desktop Chrome on macOS. Linux and Windows are experimental. [Automated command checks cover Linux, Windows, and macOS](https://github.com/jckceo/tabtelly/actions/workflows/ci.yml); this does not constitute native screen-capture or real-TV validation. Receiver compatibility depends on the TV browser's WebRTC implementation. The original prototype worked with a legacy Chromium-based Hisense VIDAA browser, but current real-hardware retesting is not available.
 
 Only one sender and one receiver are supported. Hotel and guest Wi-Fi commonly isolates clients; TabTelly cannot work when the computer and TV cannot connect directly. Do not assume public Wi-Fi is safe merely because pairing is enabled.
 

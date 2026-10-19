@@ -1,6 +1,6 @@
 # Repository handoff — TabTelly 0.1.0
 
-The owner created the public repository [jckceo/tabtelly](https://github.com/jckceo/tabtelly) and supplied its URL. Publication proceeds from the same reviewed local project directory. Public release publication remains a separate step.
+The owner authorized recreating the public repository [jckceo/tabtelly](https://github.com/jckceo/tabtelly) after deleting the original repository. The new repository has a different repository ID. Publication proceeds from the same reviewed local project directory and sanitized history. Public release publication remains a separate step.
 
 | Field | Recommendation |
 | --- | --- |
@@ -32,7 +32,7 @@ webrtc screen-sharing screen-casting browser-casting smart-tv chrome macos pytho
 6. Click **Create repository**.
 7. Send the resulting repository URL back. Stop here: do not clone it, create a second project folder, connect a remote, or push yet.
 
-The owner completed the repository-creation handoff. The CLI alternative and publication runbook are retained in [PUBLISHING.md](PUBLISHING.md) for reference; do not recreate this repository.
+The owner authorized the repository recreation and the new empty repository was created. The CLI alternative and publication runbook are retained in [PUBLISHING.md](PUBLISHING.md) for reference; do not repeat repository creation or initialize a different local project.
 
 ## Recommended settings after the URL handoff
 

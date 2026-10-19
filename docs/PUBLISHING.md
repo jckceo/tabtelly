@@ -1,8 +1,8 @@
 # Publishing checklist
 
-This runbook describes the owner-approved publication workflow. The owner created [jckceo/tabtelly](https://github.com/jckceo/tabtelly); preparation and publication use the original local project directory. Public announcements and a public release require separate authorization.
+This runbook describes the owner-approved publication workflow. The owner authorized recreating [jckceo/tabtelly](https://github.com/jckceo/tabtelly) after deleting the original repository; preparation and publication use the original local project directory and its sanitized history. Public announcements and a public release require separate authorization.
 
-**Current hold:** the owner-approved history rewrite and draft-asset replacement are complete. An old SHA-based GitHub file view still serves the former notice; obtain GitHub Support review before further publication or any claim of historical erasure. The repository already exists; do not repeat repository creation or initial Git setup. Follow [Privacy](PRIVACY.md) for identity checks, backups, history review and release-asset inspection.
+**Recreation status:** the new empty public repository has a different repository ID. The current source and reachable history passed privacy checks before publication. After the owner deleted the original repository, all 15 checked original commit/LICENSE/README URLs returned 404. Recheck those same URLs after pushing the sanitized history; record any renewed exposure and seek GitHub Support review if needed. This is an access check, not a claim about all retained data or external copies. The repository already exists; do not repeat repository creation or initial Git setup. Follow [Privacy](PRIVACY.md) for identity checks, backups, history review and release-asset inspection.
 
 ## Phase 1: verify the local release
 
@@ -21,7 +21,7 @@ The browser tests use `@playwright/test`. On Linux, use `npx playwright install 
 
 Inspect the source and release archive. Confirm `.run/`, logs, pairing codes, tokens, peer IDs, IP and MAC addresses, private device names, editor files, and OS metadata are absent. Confirm all launch drafts contain the actual repository URL and no unresolved publication placeholders.
 
-The [implementation CI run](https://github.com/jckceo/tabtelly/actions/runs/39306997735) passed all 11 jobs across Linux, macOS, Windows, and Chromium. Native capture pickers and physical televisions remain separate manual checks.
+The [CI workflow](https://github.com/jckceo/tabtelly/actions/workflows/ci.yml) runs 11 jobs across Linux, macOS, Windows, and Chromium. Review its actual result for the commit being released. Native capture pickers and physical televisions remain separate manual checks.
 
 ## Phase 2: review the release contents
 
