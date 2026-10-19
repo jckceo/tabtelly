@@ -2,6 +2,8 @@
 
 This runbook describes the owner-approved publication workflow. The owner created [jckceo/tabtelly](https://github.com/jckceo/tabtelly); preparation and publication use the original local project directory. Public announcements and a public release require separate authorization.
 
+**Current hold:** complete privacy remediation and obtain explicit approval for any remote history rewrite before further publication. The repository already exists; do not repeat repository creation or initial Git setup. Follow [Privacy](PRIVACY.md) for identity checks, backups, history review and release-asset inspection.
+
 ## Phase 1: verify the local release
 
 ```bash
@@ -12,6 +14,7 @@ npm run check
 npm run test:web
 npm run test:e2e
 python3 scripts/build_release.py
+python3 scripts/audit_privacy.py --history
 ```
 
 The browser tests use `@playwright/test`. On Linux, use `npx playwright install --with-deps chromium` when browser system dependencies are missing.

@@ -4,7 +4,7 @@ Review date: **2026-10-19**. Scope: the existing project directory. The owner cr
 
 ## Release disposition
 
-**Source published and verified; ready for an experimental release draft.** All local release-blocking findings identified in this review were addressed. The owner created the repository. No hosted site, public release, or launch announcement has been published.
+**Publication on hold for privacy remediation.** The current local copyright notices use the owner-approved public alias. Source and history safeguards have been added, and an isolated history-rewrite rehearsal passed. The published history still needs owner-approved remediation; local changes do not erase public historical content. No hosted site, public release, or launch announcement has been published. The existing release remains a draft and its old assets must be replaced before publication. See [Privacy](docs/PRIVACY.md).
 
 The intended release is **experimental 0.1.0**, under the MIT license. It is a usable LAN casting utility with explicit device and network limits, not a promise of universal TV support.
 
@@ -34,7 +34,7 @@ Local validation ran on **macOS arm64, Python 3.11.9, Node.js 26.5.0, Ruff 0.17.
 
 | Check | Actual result |
 | --- | --- |
-| `python3 -m unittest discover -s tests -v` | **46 passed**: 14 launcher, 28 server/boundary, 4 release/audit tests |
+| `python3 -m unittest discover -s tests -v` | **56 passed** after local privacy changes: 14 launcher, 28 server/boundary, 5 release/audit, 9 privacy tests |
 | `npm test` | **Passed**: module and inline ESLint, script parsing, and **11 frontend unit tests** |
 | Receiver compatibility syntax | Acorn ECMAScript 5 parse and lint passed; this checks syntax, not every old-TV API/CSS behavior |
 | `npm run test:e2e` | **4 passed** using Chromium: wrong/right keyboard pairing; actual WebRTC generated video/audio; switch/reload/busy sender/stop; narrow sender and 720p receiver layout; unsupported WebRTC receiver |
@@ -42,11 +42,12 @@ Local validation ran on **macOS arm64, Python 3.11.9, Node.js 26.5.0, Ruff 0.17.
 | Clean dependency installation | `NPM_CONFIG_USERCONFIG=/dev/null npm ci --ignore-scripts --cache .run/npm-cache` passed using the lockfile, without personal npm settings |
 | `npm audit --audit-level=high` | **0 vulnerabilities reported** for the locked development dependency tree at review time |
 | `python3 scripts/audit_release.py` | No high-confidence credential or machine-path findings in publishable files; manual private-identifier review also found no old hotel/device identifiers |
+| Privacy safeguards and history | Current source/effective maintainer identity passed; 9 privacy regressions passed, including staged-vs-working-copy content, unstaged policy bypass, alternate branches, deleted historical content, author environment overrides and annotated taggers. All 5 commits passed a private rewrite rehearsal with only copyright text changed; all other historical source bytes matched. Original history is still affected and remote cleanup is awaiting owner approval |
 | `python3 scripts/build_release.py` | ZIP, tar.gz, SHA256SUMS built; exact allowlisted source bytes verified; independent unchanged-source rebuilds matched |
 | Extracted source smoke check | ZIP extracted only into a temporary fixture inside this workspace; `--version`, `doctor`, `start --no-open`, `status`, `stop`, and source audit passed with a minimal environment and no node_modules/venv/user configuration |
 | Default port startup | Verified and retired the old prototype process from this workspace, then upgraded launcher start/status/stop on port 8090 passed with loopback binding; app left stopped |
 | Documentation/assets | Local Markdown/image links checked; sender/receiver/social PNGs visually inspected; pairing code/address redacted from sender screenshot |
-| CI and repository files | [Implementation CI](https://github.com/jckceo/tabtelly/actions/runs/39306997735) passed **all 11 jobs** for commit `cb5cbab`: nine Python OS/version jobs, JavaScript/release checks, and Chromium integration; pinned official Actions and read-only permissions verified |
+| CI and repository files | Pre-remediation implementation CI passed **all 11 jobs**: nine Python OS/version jobs, JavaScript/release checks, and Chromium integration; pinned official Actions and read-only permissions verified. This does not validate the new privacy changes remotely |
 | Git/publication boundary | The original folder is connected to `https://github.com/jckceo/tabtelly.git`; 53 allowlisted source files were committed and pushed under the owner identity. Runtime secrets, logs, dependencies, OS metadata, and archives remain ignored. Public source ZIP contents were compared with the local commit |
 
 The browser download was stored under `.run/browsers`, and local developer environments/caches remain ignored. Runtime session files and logs are also ignored; neither the source archive nor future Git staging should contain them. The immutable source archive excludes all of those directories. SHA256SUMS lives beside the archives and is regenerated whenever included source/documentation changes.
@@ -68,6 +69,8 @@ The local test run and hosted CI prove only the exercised command/protocol/synth
 - Source archives are unsigned. SHA256SUMS detects corruption when obtained through a trusted channel; it is not an independent signature or attestation.
 
 ## Publication checklist
+
+- [ ] Owner approves the reviewed history remediation and exact remote ref update; validate sanitized history and replace/retarget the existing release draft assets before publication.
 
 - [x] Complete final local validation and record exact outcomes above.
 - [x] Owner creates an **empty** public `tabtelly` repository, without generated README/license/gitignore, and supplies its URL.

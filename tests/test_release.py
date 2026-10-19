@@ -1,4 +1,5 @@
 import hashlib
+import json
 import os
 import tempfile
 import time
@@ -14,6 +15,10 @@ class ReleaseFixture(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.root = Path(self.temp.name)
         files = {
+            ".privacy-policy.json": json.dumps({
+                "approved_identities": [{"name": "alias", "email": "123+alias@users.noreply.github.com"}],
+                "copyright_holder": "alias", "allowed_emails": [],
+            }),
             "server.py": "VERSION = '0.1.0'\n",
             "tabcast": "#!/bin/sh\nexec python3 server.py \"$@\"\n",
             "tabtelly": "#!/usr/bin/env python3\nprint('launcher')\n",
@@ -29,6 +34,7 @@ class ReleaseFixture(unittest.TestCase):
             "web/sender.html": "<!doctype html><title>Sender</title>\n",
             "web/receiver.html": "<!doctype html><title>Receiver</title>\n",
             ".github/workflows/ci.yml": "name: CI\n",
+            ".githooks/pre-commit": "#!/bin/sh\nexit 0\n",
         }
         for name, content in files.items():
             path = self.root / name
@@ -45,6 +51,12 @@ class ReleaseFixture(unittest.TestCase):
 
 
 class ReleaseBuildTests(ReleaseFixture):
+    def test_build_refuses_unapproved_copyright_before_writing_archives(self):
+        (self.root / "LICENSE").write_text("Copyright (c) 2026 Private Person\n")
+        with self.assertRaisesRegex(ValueError, "privacy/credential audit failed"):
+            build_release.build(self.root)
+        self.assertFalse((self.root / "dist").exists())
+
     def test_publishable_allowlist_excludes_secrets_and_generated_trees(self):
         names = {path.as_posix() for path in build_release.release_files(self.root)}
         self.assertIn("server.py", names)
@@ -75,6 +87,8 @@ class ReleaseBuildTests(ReleaseFixture):
 
         with zipfile.ZipFile(first / "TabTelly-0.1.0.zip") as archive:
             names = set(archive.namelist())
+            hook_mode = archive.getinfo("TabTelly-0.1.0/.githooks/pre-commit").external_attr >> 16
+            self.assertEqual(hook_mode & 0o777, 0o755)
         self.assertIn("TabTelly-0.1.0/server.py", names)
         self.assertNotIn("TabTelly-0.1.0/private.env", names)
 

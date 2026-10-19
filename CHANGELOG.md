@@ -4,6 +4,11 @@ Notable changes are recorded here. The format follows [Keep a Changelog](https:/
 
 ## [Unreleased]
 
+### Changed
+
+- Use the approved public maintainer alias in the project copyright notices.
+- Add privacy checks for source archives, staged contents, full reachable Git history, and author/committer/tagger identities, with local hooks and full-history CI checks.
+
 ## [0.1.0] - 2026-10-19
 
 ### Added

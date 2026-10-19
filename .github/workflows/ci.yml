@@ -49,6 +49,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          fetch-depth: 0
+          # Audit actual contributed identities, not GitHub's synthetic PR merge.
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: "24"
@@ -61,6 +64,7 @@ jobs:
       - run: npm run check
       - run: npm run test:web
       - run: python scripts/audit_release.py
+      - run: python scripts/audit_privacy.py --history
       - run: python scripts/build_release.py
 
   browser:

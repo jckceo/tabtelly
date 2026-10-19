@@ -7,6 +7,7 @@ The most useful contributions are focused bug reports, real-hardware compatibili
 - Read [Architecture](docs/ARCHITECTURE.md) and [Compatibility](docs/COMPATIBILITY.md).
 - Search existing issues first and discuss large architectural changes in an issue.
 - Keep device names, IP and MAC addresses, pairing codes, peer IDs, and runtime secrets out of issues and fixtures.
+- Read [Privacy](docs/PRIVACY.md), use a public alias and your exact GitHub noreply address, and enable the local Git hooks before staging a change. Never add private identifiers to the public policy or fixtures.
 
 ## Local setup
 
@@ -37,6 +38,7 @@ npm run check
 npm run test:web
 npm run test:e2e
 python scripts/audit_release.py
+python scripts/audit_privacy.py --history
 python scripts/build_release.py
 ```
 

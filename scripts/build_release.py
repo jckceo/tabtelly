@@ -8,6 +8,7 @@ import ast
 import gzip
 import hashlib
 import io
+import json
 import re
 import tarfile
 import zipfile
@@ -19,6 +20,7 @@ ROOT_FILES = (
     ".editorconfig",
     ".gitattributes",
     ".gitignore",
+    ".privacy-policy.json",
     "CHANGELOG.md",
     "CONTRIBUTING.md",
     "LICENSE",
@@ -36,6 +38,7 @@ ROOT_FILES = (
     "tabtelly",
 )
 ALLOWLIST = {
+    ".githooks": {""},
     ".github": {".md", ".yml", ".yaml"},
     "assets": {".png", ".svg"},
     "docs": {".md"},
@@ -89,7 +92,7 @@ def release_files(root: Path) -> tuple[Path, ...]:
 
 
 def _mode(path: Path) -> int:
-    return 0o755 if path.as_posix() in {"server.py", "tabcast", "tabtelly"} else 0o644
+    return 0o755 if path.as_posix() in {"server.py", "tabcast", "tabtelly"} or path.parts[0] == ".githooks" else 0o644
 
 
 def _write_zip(path: Path, root: Path, prefix: str, files: tuple[Path, ...]) -> None:
@@ -157,6 +160,16 @@ def build(root: Path = PROJECT_ROOT, output: Path | None = None) -> tuple[Path, 
     missing = [path.as_posix() for path in REQUIRED_RUNTIME_FILES if path not in files]
     if missing:
         raise ValueError("release is missing required files: " + ", ".join(missing))
+
+    # Build-time checks also protect manual builds outside GitHub Actions.
+    try:
+        from scripts import audit_privacy, audit_release
+    except ModuleNotFoundError:
+        import audit_privacy
+        import audit_release
+    policy = json.loads((root / ".privacy-policy.json").read_text())
+    if audit_privacy.audit_tree(root, policy, audit_privacy.private_terms(root)) or audit_release.audit(root):
+        raise ValueError("release privacy/credential audit failed; run scripts/audit_privacy.py and scripts/audit_release.py")
 
     output.mkdir(parents=True, exist_ok=True)
     prefix = f"TabTelly-{version}"
