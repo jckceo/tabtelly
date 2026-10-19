@@ -22,7 +22,7 @@ Recommended topics:
 webrtc screen-sharing screen-casting browser-casting smart-tv chrome macos python local-network peer-to-peer audio-streaming vidaa
 ```
 
-## Create the empty repository
+## Initial empty-repository creation (completed)
 
 1. Open [GitHub's new repository form](https://github.com/new).
 2. Select your account or intended organization as owner.
@@ -32,7 +32,7 @@ webrtc screen-sharing screen-casting browser-casting smart-tv chrome macos pytho
 6. Click **Create repository**.
 7. Send the resulting repository URL back. Stop here: do not clone it, create a second project folder, connect a remote, or push yet.
 
-The CLI alternative and later publication stages are in [PUBLISHING.md](PUBLISHING.md). They are instructions, not actions already taken.
+The owner completed the repository-creation handoff. The CLI alternative and publication runbook are retained in [PUBLISHING.md](PUBLISHING.md) for reference; do not recreate this repository.
 
 ## Recommended settings after the URL handoff
 
@@ -44,3 +44,7 @@ The CLI alternative and later publication stages are in [PUBLISHING.md](PUBLISHI
 - Prefer squash merges and automatic branch deletion. Leave deployments and Pages disabled unless a later task explicitly requests them.
 - Upload `assets/social-preview.png` as the repository social preview. Set the description/topics above and use the prepared release/launch copy.
 - Build source assets from the reviewed commit, verify SHA256SUMS, then publish only when authorized. No automatic public release workflow is installed.
+
+## Applied metadata
+
+The supplied public repository uses `main`, the description and 12 topics above, the MIT license, private vulnerability reporting, and read-only workflow permissions. The social preview PNG is prepared locally for optional manual upload; repository protection/merge policies remain maintainer choices.

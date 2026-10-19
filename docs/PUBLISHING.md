@@ -18,7 +18,7 @@ The browser tests use `@playwright/test`. On Linux, use `npx playwright install 
 
 Inspect the source and release archive. Confirm `.run/`, logs, pairing codes, tokens, peer IDs, IP and MAC addresses, private device names, editor files, and OS metadata are absent. Confirm all launch drafts contain the actual repository URL and no unresolved publication placeholders.
 
-The current readiness statement is: local macOS tests have run, while Linux and Windows CI is configured but has not yet run on GitHub. Do not strengthen that statement before the workflow completes remotely.
+The [implementation CI run](https://github.com/jckceo/tabtelly/actions/runs/39306997735) passed all 11 jobs across Linux, macOS, Windows, and Chromium. Native capture pickers and physical televisions remain separate manual checks.
 
 ## Phase 2: review the release contents
 

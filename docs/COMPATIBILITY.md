@@ -7,14 +7,14 @@ TabTelly depends on browser APIs and direct LAN connectivity. A TV brand or oper
 | Component | Status | Notes |
 | --- | --- | --- |
 | Chrome on macOS | Primary | Main sender development target |
-| Chrome on Linux | Experimental | Command CI is configured; only local macOS command tests are currently confirmed |
-| Chrome on Windows | Experimental | Use `python tabtelly`; command CI is configured but has not run remotely yet |
+| Chrome on Linux | Experimental | Linux command CI and synthetic Chromium/WebRTC CI passed; native desktop capture remains unverified |
+| Chrome on Windows | Experimental | Use `python tabtelly`; Windows command CI passed; native desktop capture remains unverified |
 | Hisense VIDAA legacy browser | Empirical prototype result | A Chromium-based VIDAA browser worked originally; current hardware retesting is unavailable |
 | Other smart TV browsers | Unknown | Requires compatible WebRTC, codecs, and JavaScript |
 | Multiple senders or receivers | Unsupported | One current sender and one receiver |
 | Isolated guest networks | Unsupported | Direct peer reachability is required |
 
-This table is deliberately conservative. Real-device reports are welcome through the compatibility issue form.
+The [first complete passing CI run](https://github.com/jckceo/tabtelly/actions/runs/39306997735) covers Python 3.10–3.14 on Linux and Python 3.10/3.14 on macOS and Windows, plus Chromium media integration on Linux. POSIX symlink tests are skipped on Windows. This table is deliberately conservative. Real-device reports are welcome through the compatibility issue form.
 
 ## Sender requirements
 

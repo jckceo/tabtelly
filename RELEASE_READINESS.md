@@ -1,10 +1,10 @@
-# TabTelly 0.1.0 — local release candidate
+# TabTelly 0.1.0 — release readiness
 
 Review date: **2026-10-19**. Scope: the existing project directory. The owner created the empty public repository [jckceo/tabtelly](https://github.com/jckceo/tabtelly) and supplied its URL; final publication checks use this same local directory.
 
 ## Release disposition
 
-**Ready locally for an experimental release; final source publication checks are in progress.** All local release-blocking findings identified in this review were addressed. The owner created the repository. No hosted site, public release, or launch announcement has been published.
+**Source published and verified; ready for an experimental release draft.** All local release-blocking findings identified in this review were addressed. The owner created the repository. No hosted site, public release, or launch announcement has been published.
 
 The intended release is **experimental 0.1.0**, under the MIT license. It is a usable LAN casting utility with explicit device and network limits, not a promise of universal TV support.
 
@@ -46,18 +46,18 @@ Local validation ran on **macOS arm64, Python 3.11.9, Node.js 26.5.0, Ruff 0.17.
 | Extracted source smoke check | ZIP extracted only into a temporary fixture inside this workspace; `--version`, `doctor`, `start --no-open`, `status`, `stop`, and source audit passed with a minimal environment and no node_modules/venv/user configuration |
 | Default port startup | Verified and retired the old prototype process from this workspace, then upgraded launcher start/status/stop on port 8090 passed with loopback binding; app left stopped |
 | Documentation/assets | Local Markdown/image links checked; sender/receiver/social PNGs visually inspected; pairing code/address redacted from sender screenshot |
-| CI and repository files | Workflow/issue YAML validated, official Action tags checked against pinned SHAs, read-only permissions reviewed; GitHub execution remains pending |
-| Git/publication boundary | After the owner supplied the URL, Git was initialized in the original folder and origin was set to `https://github.com/jckceo/tabtelly.git`; only allowlisted source files are intended for the first commit |
+| CI and repository files | [Implementation CI](https://github.com/jckceo/tabtelly/actions/runs/39306997735) passed **all 11 jobs** for commit `cb5cbab`: nine Python OS/version jobs, JavaScript/release checks, and Chromium integration; pinned official Actions and read-only permissions verified |
+| Git/publication boundary | The original folder is connected to `https://github.com/jckceo/tabtelly.git`; 53 allowlisted source files were committed and pushed under the owner identity. Runtime secrets, logs, dependencies, OS metadata, and archives remain ignored. Public source ZIP contents were compared with the local commit |
 
 The browser download was stored under `.run/browsers`, and local developer environments/caches remain ignored. Runtime session files and logs are also ignored; neither the source archive nor future Git staging should contain them. The immutable source archive excludes all of those directories. SHA256SUMS lives beside the archives and is regenerated whenever included source/documentation changes.
 
-The macOS test run proves local behavior only. Native capture picker permissions, physical TV playback, sustained hotel Wi-Fi performance, and GitHub-hosted CI were not tested.
+The local test run and hosted CI prove only the exercised command/protocol/synthetic-media behavior. Native capture picker permissions, physical TV playback, and sustained hotel Wi-Fi performance were not tested. Windows skips the POSIX-only symlink cases.
 
 ## Known limitations and unsupported scenarios
 
 - The automated WebRTC test uses generated moving canvas video and oscillator audio in Chromium. It proves browser signaling/media flow, not native OS capture permissions, a real screen picker, speaker output, lip sync, hardware decoding, or physical TV compatibility.
 - The original prototype worked on one legacy Chromium-based Hisense VIDAA TV. The release candidate has **not** been retested on that TV. Other TV brands, firmware versions, and browsers are unverified.
-- macOS is the locally exercised OS. Linux/Windows command tests are configured in CI; their first GitHub execution will follow the initial push. Do not infer device validation from an OS matrix.
+- macOS is the locally exercised OS. Hosted command CI passed on Linux, macOS, and Windows; browser media CI ran on Linux. Do not infer native desktop capture or TV validation from an OS matrix.
 - One sender and one receiver only. The newest paired receiver can replace the previous receiver. Restart rotates all credentials; reload the sender and re-pair the TV.
 - A compatible WebRTC receiver, shared codec, and direct IPv4 LAN reachability are required. No automatic discovery, IPv6-only operation, STUN/TURN, cloud relay, NAT traversal, or guest/client-isolation bypass.
 - Hotel/public networks may be isolated or hostile. Pairing is over HTTP and does not protect against a network operator or on-path attacker. Use a trusted LAN; never port-forward the server.
@@ -73,10 +73,12 @@ The macOS test run proves local behavior only. Native capture picker permissions
 - [x] Owner creates an **empty** public `tabtelly` repository, without generated README/license/gitignore, and supplies its URL.
 - [x] After the URL is supplied, re-review the source, Git state/remotes, ignored files, and secret scan before making the first commits.
 - [x] Insert the real repository URL in launch drafts, revalidate links/metadata, and rebuild archives from the reviewed source.
-- [ ] Stage/review only intended files; author commits solely as the owner with no AI attribution/trailers.
-- [ ] Connect this same folder, push, and run configured GitHub Actions; resolve any actual platform/runner failures before publishing release assets.
-- [ ] Configure description/topics, default branch, private vulnerability reporting, minimal workflow permissions, and the social preview as described in [PUBLISHING.md](docs/PUBLISHING.md).
-- [ ] With authorization, tag the reviewed commit `v0.1.0`, attach the verified source archives/checksums, and publish the experimental pre-release.
+- [x] Stage/review only intended files; author commits solely as the owner with no AI attribution/trailers.
+- [x] Connect this same folder, push, and run configured GitHub Actions; resolve actual platform/runner failures before preparing release assets.
+- [x] Verify description, 12 topics, `main`, private vulnerability reporting, and read-only workflow permissions.
+- [ ] Optional: upload the prepared social preview PNG through repository settings.
+- [x] Prepare the `v0.1.0` notes and verified source archives/checksums for the release draft.
+- [ ] Publish the experimental pre-release only when explicitly authorized.
 - [ ] Replace launch links and check current community rules before any announcement is posted.
 
 Repository name, description, topics, settings, and exact empty-repository creation steps are ready in [REPOSITORY_METADATA.md](docs/REPOSITORY_METADATA.md).

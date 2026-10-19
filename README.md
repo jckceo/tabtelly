@@ -2,6 +2,8 @@
 
 # TabTelly
 
+[![CI](https://github.com/jckceo/tabtelly/actions/workflows/ci.yml/badge.svg)](https://github.com/jckceo/tabtelly/actions/workflows/ci.yml)
+
 Cast a Chrome tab with audio to a compatible TV browser over local Wi-Fi.
 
 TabTelly uses Chrome's screen picker and a direct WebRTC connection. The TV opens a web page; there is no receiver app to install, account to create, or cloud relay. It is useful when a television has a capable browser but no casting protocol your computer can use.
@@ -85,7 +87,7 @@ Only `0.0.0.0` and `127.0.0.1` are accepted bind values. A loopback-only bind ca
 
 ## Compatibility
 
-TabTelly currently targets desktop Chrome on macOS. Linux and Windows are experimental. Command CI is configured for those platforms, but only local macOS command tests have been confirmed so far; neither form of testing constitutes real-device validation. Receiver compatibility depends on the TV browser's WebRTC implementation. The original prototype worked with a legacy Chromium-based Hisense VIDAA browser, but current real-hardware retesting is not available.
+TabTelly currently targets desktop Chrome on macOS. Linux and Windows are experimental. [Command CI has passed on Linux, Windows, and macOS](https://github.com/jckceo/tabtelly/actions/runs/39306997735); this does not constitute native screen-capture or real-TV validation. Receiver compatibility depends on the TV browser's WebRTC implementation. The original prototype worked with a legacy Chromium-based Hisense VIDAA browser, but current real-hardware retesting is not available.
 
 Only one sender and one receiver are supported. Hotel and guest Wi-Fi commonly isolates clients; TabTelly cannot work when the computer and TV cannot connect directly. Do not assume public Wi-Fi is safe merely because pairing is enabled.
 
