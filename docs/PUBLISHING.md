@@ -2,7 +2,7 @@
 
 This runbook describes the owner-approved publication workflow. The owner created [jckceo/tabtelly](https://github.com/jckceo/tabtelly); preparation and publication use the original local project directory. Public announcements and a public release require separate authorization.
 
-**Current hold:** complete privacy remediation and obtain explicit approval for any remote history rewrite before further publication. The repository already exists; do not repeat repository creation or initial Git setup. Follow [Privacy](PRIVACY.md) for identity checks, backups, history review and release-asset inspection.
+**Current hold:** the owner-approved history rewrite and draft-asset replacement are complete. An old SHA-based GitHub file view still serves the former notice; obtain GitHub Support review before further publication or any claim of historical erasure. The repository already exists; do not repeat repository creation or initial Git setup. Follow [Privacy](PRIVACY.md) for identity checks, backups, history review and release-asset inspection.
 
 ## Phase 1: verify the local release
 

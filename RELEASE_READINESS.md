@@ -4,7 +4,7 @@ Review date: **2026-10-19**. Scope: the existing project directory. The owner cr
 
 ## Release disposition
 
-**Publication on hold for privacy remediation.** The current local copyright notices use the owner-approved public alias. Source and history safeguards have been added, and an isolated history-rewrite rehearsal passed. The published history still needs owner-approved remediation; local changes do not erase public historical content. No hosted site, public release, or launch announcement has been published. The existing release remains a draft and its old assets must be replaced before publication. See [Privacy](docs/PRIVACY.md).
+**Reachable public history sanitized; publication remains on hold for residual GitHub cached views.** The owner approved the history rewrite, which was applied to the existing repository and verified against all rewritten public commit trees. Copyright notices and author/committer identities use the approved public identity. Source and history safeguards are active. The existing release remains a draft; its archives/checksums were replaced with verified sanitized copies. An old SHA-based file URL still serves the former notice, so GitHub Support review is required before claiming historical erasure. No hosted site, public release, or launch announcement has been published. See [Privacy](docs/PRIVACY.md).
 
 The intended release is **experimental 0.1.0**, under the MIT license. It is a usable LAN casting utility with explicit device and network limits, not a promise of universal TV support.
 
@@ -42,7 +42,7 @@ Local validation ran on **macOS arm64, Python 3.11.9, Node.js 26.5.0, Ruff 0.17.
 | Clean dependency installation | `NPM_CONFIG_USERCONFIG=/dev/null npm ci --ignore-scripts --cache .run/npm-cache` passed using the lockfile, without personal npm settings |
 | `npm audit --audit-level=high` | **0 vulnerabilities reported** for the locked development dependency tree at review time |
 | `python3 scripts/audit_release.py` | No high-confidence credential or machine-path findings in publishable files; manual private-identifier review also found no old hotel/device identifiers |
-| Privacy safeguards and history | Current source/effective maintainer identity passed; 9 privacy regressions passed, including staged-vs-working-copy content, unstaged policy bypass, alternate branches, deleted historical content, author environment overrides and annotated taggers. All 5 commits passed a private rewrite rehearsal with only copyright text changed; all other historical source bytes matched. Original history is still affected and remote cleanup is awaiting owner approval |
+| Privacy safeguards and history | Current source/effective maintainer identity passed; 9 privacy regressions passed, including staged-vs-working-copy content, unstaged policy bypass, alternate branches, deleted historical content, author environment overrides and annotated taggers. The owner-approved rewrite sanitized all 5 original commits, preserving all other original source bytes. All 6 resulting public commit trees and raw author/committer identities matched the audited local history. Old SHA-based GitHub cached content remains a separate Support action |
 | `python3 scripts/build_release.py` | ZIP, tar.gz, SHA256SUMS built; exact allowlisted source bytes verified; independent unchanged-source rebuilds matched |
 | Extracted source smoke check | ZIP extracted only into a temporary fixture inside this workspace; `--version`, `doctor`, `start --no-open`, `status`, `stop`, and source audit passed with a minimal environment and no node_modules/venv/user configuration |
 | Default port startup | Verified and retired the old prototype process from this workspace, then upgraded launcher start/status/stop on port 8090 passed with loopback binding; app left stopped |
@@ -70,7 +70,8 @@ The local test run and hosted CI prove only the exercised command/protocol/synth
 
 ## Publication checklist
 
-- [ ] Owner approves the reviewed history remediation and exact remote ref update; validate sanitized history and replace/retarget the existing release draft assets before publication.
+- [x] Owner approved the reviewed history remediation; updated only `main` with an exact lease, validated sanitized public history, and replaced/retargeted the existing release draft assets.
+- [ ] Obtain GitHub Support review of residual old SHA-based views/cached objects; do not claim global erasure or publish a release while this hold remains.
 
 - [x] Complete final local validation and record exact outcomes above.
 - [x] Owner creates an **empty** public `tabtelly` repository, without generated README/license/gitignore, and supplies its URL.
