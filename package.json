@@ -1,0 +1,23 @@
+{
+  "name": "tabtelly",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Development tooling for the TabTelly browser-to-TV caster",
+  "type": "module",
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "scripts": {
+    "check": "eslint \"scripts/**/*.mjs\" \"tests/**/*.mjs\" playwright.config.mjs && node scripts/check_web.mjs",
+    "test:web": "node --test tests/web-unit.mjs",
+    "test:e2e": "playwright test",
+    "test": "npm run check && npm run test:web"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@playwright/test": "1.64.0",
+    "acorn": "8.19.0",
+    "eslint": "10.12.0",
+    "globals": "17.13.0"
+  }
+}

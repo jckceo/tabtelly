@@ -1,0 +1,60 @@
+name: Compatibility report
+description: Report a real TV and browser test
+title: "[Compatibility]: "
+labels: [compatibility]
+body:
+  - type: markdown
+    attributes:
+      value: Real-device reports help define support honestly. Do not include private network or pairing details.
+  - type: input
+    id: tv
+    attributes:
+      label: TV manufacturer and model
+    validations:
+      required: true
+  - type: input
+    id: firmware
+    attributes:
+      label: TV firmware or OS version
+    validations:
+      required: true
+  - type: textarea
+    id: browser
+    attributes:
+      label: TV browser details
+      description: Include the user agent if available.
+    validations:
+      required: true
+  - type: textarea
+    id: sender
+    attributes:
+      label: Sender environment
+      description: Computer OS, Chrome, Python, and TabTelly versions.
+    validations:
+      required: true
+  - type: dropdown
+    id: result
+    attributes:
+      label: Result
+      options:
+        - Video and audio worked
+        - Video worked without audio
+        - Connected but media failed
+        - Receiver page failed to run
+        - Network connection failed
+    validations:
+      required: true
+  - type: textarea
+    id: observations
+    attributes:
+      label: Observations
+      description: Describe source, duration, preset, and repeatable limits. Avoid subjective performance claims without measurements.
+    validations:
+      required: true
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: Privacy
+      options:
+        - label: I removed codes, secrets, peer IDs, addresses, and private device names.
+          required: true

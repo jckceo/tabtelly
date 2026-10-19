@@ -1,0 +1,24 @@
+# Local runtime state and generated output
+.run/
+dist/
+playwright-report/
+test-results/
+work/
+
+# Dependency and language caches
+node_modules/
+__pycache__/
+*.py[cod]
+.ruff_cache/
+.venv/
+
+# Credentials and local configuration
+.env
+.env.*
+!.env.example
+
+# Editor and operating-system files
+.DS_Store
+Thumbs.db
+*.swp
+*.swo

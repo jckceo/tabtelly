@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TabTelly latency diagnostic</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #000; color: #fff; overflow: hidden;
+    font-family: -apple-system, BlinkMacSystemFont, sans-serif; }
+  #bars { position: absolute; top: 0; left: 0; width: 100%; height: 8%; display: flex; }
+  #bars div { flex: 1; }
+  #clock { position: absolute; top: 42%; width: 100%; text-align: center; font: 600 14vw/1 Menlo, monospace; }
+  #note { position: absolute; bottom: 4%; width: 100%; text-align: center; font-size: 2vw; color: #999; }
+  #spin { position: absolute; top: 20%; left: 50%; width: 6vw; height: 6vw; margin-left: -3vw; border-radius: 50%;
+    border: 1vw solid #333; border-top-color: #4c8dff; }
+</style>
+</head>
+<body>
+<div id="bars" aria-hidden="true"></div>
+<div id="spin" aria-hidden="true"></div>
+<div id="clock" aria-label="Current server time">--:--.---</div>
+<div id="note">Cast this tab for a timestamp diagnostic. When the TV can read the strip above, it reports the observed video-path delay.</div>
+<script>
+// Top strip: 48 cells = marker 1010 + 42-bit timestamp (ms, local server clock) + end 11.
+const bars = document.getElementById('bars'), clock = document.getElementById('clock'), spin = document.getElementById('spin'), note = document.getElementById('note');
+const cells = [];
+for (let i = 0; i < 48; i++) { const d = document.createElement('div'); bars.appendChild(d); cells.push(d); }
+let offset = 0;
+const senderToken = (() => {
+  try { return window.opener?.TABCAST?.senderToken || ''; } catch { return ''; }
+})();
+(async () => {
+  if (!senderToken) {
+    note.textContent = 'Open this diagnostic with the Latency diagnostic button on the TabTelly sender page.';
+    return;
+  }
+  let best = null;
+  try {
+    for (let i = 0; i < 8; i++) {
+      const t0 = Date.now();
+      const response = await fetch('/time', { cache: 'no-store', headers: { 'X-Tabcast-Token': senderToken } });
+      if (!response.ok) throw new Error('Clock request rejected');
+      const { t } = await response.json(); const t1 = Date.now();
+      if (!best || t1 - t0 < best.rtt) best = { rtt: t1 - t0, off: t - (t0 + (t1 - t0) / 2) };
+    }
+    offset = best.off;
+  } catch {
+    note.textContent = 'Clock sync failed. Return to the sender page and reopen this diagnostic.';
+  }
+})();
+function frame() {
+  const t = Math.round(Date.now() + offset);
+  const bits = '1010' + t.toString(2).padStart(42, '0').slice(-42) + '11';
+  for (let i = 0; i < 48; i++) cells[i].style.background = bits[i] === '1' ? '#fff' : '#000';
+  const d = new Date(t);
+  clock.textContent = d.toTimeString().slice(3, 8) + '.' + String(d.getMilliseconds()).padStart(3, '0');
+  spin.style.transform = `rotate(${(t % 1000) * 0.36}deg)`;
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+// ?tone=1: a 200 ms 880 Hz beep at every second boundary, to check audio arrives and lines up with the clock.
+function startTone() {
+  const ac = new AudioContext();
+  const schedule = () => {
+    const now = Date.now() + offset, next = Math.ceil(now / 1000) * 1000;
+    const at = ac.currentTime + (next - now) / 1000;
+    const o = ac.createOscillator(), g = ac.createGain();
+    o.frequency.value = 880; g.gain.value = 0.3;
+    o.connect(g).connect(ac.destination); o.start(at); o.stop(at + 0.2);
+    setTimeout(schedule, next - now + 50);
+  };
+  schedule();
+}
+if (new URLSearchParams(location.search).has('tone')) startTone();
+
+// ?motion=1: full-screen moving content to stress the encoder / TV decoder (silent).
+if (new URLSearchParams(location.search).has('motion')) {
+  const c = document.createElement('canvas');
+  c.style.cssText = 'position:absolute;top:8%;left:0;width:100%;height:92%;z-index:-1';
+  document.body.prepend(c);
+  const g = c.getContext('2d');
+  const draw = (ts) => {
+    c.width = innerWidth; c.height = innerHeight * 0.92;
+    for (let i = 0; i < 24; i++) {
+      const x = (Math.sin(ts / 700 + i) * 0.45 + 0.5) * c.width, y = (Math.cos(ts / 900 + i * 1.7) * 0.45 + 0.5) * c.height;
+      g.fillStyle = `hsl(${(ts / 10 + i * 15) % 360} 80% 55%)`;
+      g.fillRect(x - 60, y - 60, 120, 120);
+    }
+    g.fillStyle = '#fff'; g.fillRect((ts / 2) % c.width, 0, 8, c.height);
+    requestAnimationFrame(draw);
+  };
+  requestAnimationFrame(draw);
+}
+document.addEventListener('click', () => { if (!window.toneOn) { window.toneOn = true; startTone(); } }, { once: true });
+</script>
+</body>
+</html>

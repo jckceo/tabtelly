@@ -1,0 +1,411 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Cast a browser tab to a TV on your local network.">
+<title>TabTelly</title>
+<style>
+  :root { color-scheme: light dark; --bg:#f4f4f0; --card:#fff; --ink:#20201e; --mute:#676762; --line:#deded7;
+    --accent:#155f52; --accent-hover:#0f5146; --ok:#23835e; --warn:#a46608; --bad:#bb3542; --focus:#e38b2c; --soft:#ecece6; }
+  @media (prefers-color-scheme:dark) { :root { --bg:#111310; --card:#1b1e1a; --ink:#f1f2ed; --mute:#a1a59d; --line:#343931;
+    --accent:#4e9f8d; --accent-hover:#62b29f; --ok:#55b58c; --warn:#dda64e; --bad:#dd6873; --focus:#f4a64f; --soft:#252924; } }
+  * { box-sizing:border-box } body { margin:0; background:var(--bg); color:var(--ink); font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif }
+  .skip { position:fixed; left:12px; top:-80px; z-index:10; padding:10px 14px; background:var(--ink); color:var(--bg); border-radius:6px }
+  .skip:focus { top:12px } main { width:min(100% - 32px,760px); margin:clamp(24px,6vw,64px) auto }
+  header { margin:0 0 28px } h1 { font-size:clamp(2rem,6vw,3.15rem); line-height:1; letter-spacing:-.055em; margin:0 0 10px }
+  .sub { color:var(--mute); max-width:58ch; margin:0; text-wrap:pretty }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:20px; margin-bottom:16px }
+  .row { display:flex; align-items:center; gap:12px; flex-wrap:wrap } .between { justify-content:space-between }
+  .dot { width:10px; height:10px; border-radius:50%; background:var(--warn); flex:none } .dot.ok { background:var(--ok) } .dot.bad { background:var(--bad) }
+  code { font:600 13px ui-monospace,SFMono-Regular,Menlo,monospace; background:var(--soft); padding:3px 7px; border-radius:5px }
+  .pair-code { font-size:1.15rem; letter-spacing:.12em; font-variant-numeric:tabular-nums }
+  fieldset { border:0; padding:0; margin:0; min-width:0 } legend { font-weight:650; margin-bottom:12px } label { color:var(--mute) }
+  select { font:inherit; padding:7px 9px; border-radius:7px; border:1px solid var(--line); background:var(--card); color:var(--ink) }
+  button { font:inherit; font-weight:650; border:1px solid transparent; border-radius:8px; padding:10px 16px; cursor:pointer; background:var(--accent);
+    color:#fff; transition:background-color .18s ease,transform .18s ease,opacity .18s ease }
+  button:hover:not(:disabled) { background:var(--accent-hover) } button:active:not(:disabled) { transform:translateY(1px) }
+  button.secondary { background:transparent; color:var(--ink); border-color:var(--line) } button.secondary:hover:not(:disabled) { background:var(--soft) }
+  button.stop { background:var(--bad) } button:disabled { opacity:.42; cursor:default } :focus-visible { outline:3px solid var(--focus); outline-offset:3px }
+  video { width:100%; border-radius:9px; background:#000; margin-top:14px; display:none }
+  table { width:100%; border-collapse:collapse; font:13px/1.6 ui-monospace,SFMono-Regular,Menlo,monospace }
+  caption { text-align:left; font:650 15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; margin-bottom:8px }
+  td { padding:2px 0; vertical-align:top; overflow-wrap:anywhere } td:first-child { color:var(--mute); width:38% }
+  .hint { color:var(--mute); font-size:13px; margin:10px 0 0; max-width:70ch } .hint.warn { color:var(--warn) }
+  .notice { border-left:3px solid var(--warn); padding-left:11px; color:var(--ink) } .notice.error { border-left-color:var(--bad) }
+  [hidden] { display:none!important } @media (max-width:560px) { .actions button { flex:1 1 45% } .card { padding:17px } }
+  @media (prefers-reduced-motion:reduce) { *,*::before,*::after { transition-duration:.01ms!important } }
+</style>
+</head>
+<body>
+<a class="skip" href="#controls">Skip to casting controls</a>
+<main>
+  <header><h1>TabTelly</h1><p class="sub">Cast a Chrome tab, including its audio, or a window to a TV browser on the same network.</p></header>
+  <section class="card" aria-labelledby="receiverHeading">
+    <div class="row between"><div class="row"><span id="tvDot" class="dot" aria-hidden="true"></span><strong id="receiverHeading">Receiver</strong></div>
+      <span id="tvState" role="status" aria-live="polite">Looking for the TV…</span></div>
+    <p class="hint">On the TV, open <code id="tvUrl">http://…:8090/</code>, then enter pairing code <code id="pairCode" class="pair-code">------</code>.</p>
+    <p id="notice" class="hint notice" role="alert" hidden></p>
+  </section>
+  <section class="card" id="controls" aria-labelledby="controlsHeading">
+    <fieldset><legend id="controlsHeading">Casting controls</legend>
+      <div class="row"><label for="quality">Quality</label><select id="quality">
+        <option value="1080p30">1080p · 30 fps (sharp text)</option><option value="1080p60">1080p · 60 fps (video and motion)</option>
+        <option value="720p60">720p · 60 fps (weaker Wi-Fi)</option></select>
+        <label><input type="checkbox" id="localMute" checked> Play audio only on the TV</label></div>
+      <div class="row actions" style="margin-top:16px"><button type="button" id="start" disabled>Cast a tab…</button>
+        <button type="button" id="switch" class="secondary" disabled>Switch tab…</button><button type="button" id="stop" class="stop" disabled>Stop casting</button>
+        <button type="button" id="latency" class="secondary" title="Open the timestamp diagnostic">Latency diagnostic</button></div>
+    </fieldset>
+    <p class="hint">In Chrome’s picker, choose <strong>Chrome Tab</strong> and leave “Also share tab audio” on. A whole app window can be shared without audio. Changing local audio playback may open the picker again; choose the same tab to continue.</p>
+    <p id="keepaliveNote" class="hint warn" hidden>The optional <code>?keepalive=1</code> mode is active. It plays a very quiet 20 Hz tone locally to discourage background throttling; hardware and browser behavior vary.</p>
+    <p id="pipWarn" class="hint warn" hidden>The mini controller could not open. Keep this page visible while casting so the browser does not reduce capture performance. <a href="#" id="pipReopen">Open the mini controller</a>.</p>
+    <video id="preview" muted playsinline aria-label="Local preview of the selected source"></video>
+  </section>
+  <section class="card"><table id="stats"><caption>Live stats</caption><tbody><tr><td>status</td><td>idle</td></tr></tbody></table></section>
+</main>
+<script>
+const ROLE = 'sender';
+const id = 'mac-' + Math.random().toString(36).slice(2, 10);
+const $ = (s) => document.getElementById(s);
+const CONFIG = window.TABCAST || {};
+const TOKEN = CONFIG.senderToken || '';
+const OPT = new URLSearchParams(location.search);
+const PRESETS = {
+  '1080p30': { width:1920, height:1080, fps:30, kbps:8000, hint:'detail' },
+  '1080p60': { width:1920, height:1080, fps:60, kbps:12000, hint:'motion' },
+  '720p60': { width:1280, height:720, fps:60, kbps:5000, hint:'motion' },
+};
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+let stream = null, pc = null, tvOnline = false, tvId = null, restartTimer = null, statsTimer = null, prevOut = null;
+let tvReport = {}, negotiating = false, pcTvId = null, prevTrack = null, switching = false, tvCompatible = null;
+let pendingRemoteCandidates = [], keepAlive = null, pipWin = null, pipLabel = () => {}, operationVersion = 0;
+
+function authHeaders(json = false) {
+  const headers = { 'X-Tabcast-Token': TOKEN };
+  if (json) headers['Content-Type'] = 'application/json';
+  return headers;
+}
+function showNotice(text, error = false) {
+  $('notice').textContent = text || ''; $('notice').className = 'hint notice' + (error ? ' error' : ''); $('notice').hidden = !text;
+}
+async function post(url, body, options = {}) {
+  try {
+    const response = await fetch(url, { method:'POST', headers:authHeaders(true), body:JSON.stringify(body), keepalive:!!options.keepalive });
+    if (response.status === 401) { showNotice('This sender session expired. Reload this local page to reconnect.', true); stop('authorization lost', { notify:false }); }
+    else if (response.status === 409) { stop('sender replaced or not registered', { notify:false }); setTv(false, 'This sender session was replaced. Reload the page to reconnect.', true); }
+    else if (response.status === 429) showNotice('The receiver is handling too many requests. TabTelly will keep retrying.');
+    else if (!response.ok) showNotice('The local server rejected a signaling request. Check that it is still running.', true);
+    return response;
+  } catch {
+    showNotice('The local server is unreachable. Start it, then leave this page open while it reconnects.', true);
+    return null;
+  }
+}
+const send = (message, options) => post('/msg', { ...message, from:ROLE, id }, options);
+const report = (message) => post('/report', { ...message, from:ROLE, role:ROLE, id });
+function capabilitiesReady() { return !!(window.RTCPeerConnection && navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia); }
+function setTv(online, text, bad = false) {
+  tvOnline = online; $('tvDot').className = 'dot ' + (online ? 'ok' : bad ? 'bad' : ''); $('tvState').textContent = text;
+  if (!stream) $('start').disabled = !online || !capabilitiesReady();
+}
+function stopTracks(selected) { if (selected) selected.getTracks().forEach((track) => { try { track.stop(); } catch {} }); }
+function startKeepAlive() {
+  if (keepAlive || OPT.get('keepalive') !== '1') return;
+  try {
+    const audioContext = new AudioContext(), oscillator = audioContext.createOscillator(), gain = audioContext.createGain();
+    oscillator.frequency.value = 20; gain.gain.value = .002; oscillator.connect(gain).connect(audioContext.destination); oscillator.start(); keepAlive = audioContext;
+  } catch (error) { report({ event:'keepalive unavailable: ' + error.name }); }
+}
+function stopKeepAlive() { if (keepAlive) { const result = keepAlive.close(); if (result && result.catch) result.catch(() => {}); keepAlive = null; } }
+
+async function capture(nav = navigator) {
+  const preset = PRESETS[$('quality').value];
+  const selected = await nav.mediaDevices.getDisplayMedia({
+    video:{ width:{ ideal:preset.width }, height:{ ideal:preset.height }, frameRate:{ ideal:preset.fps, max:preset.fps } },
+    audio:{ suppressLocalAudioPlayback:$('localMute').checked, echoCancellation:false, noiseSuppression:false, autoGainControl:false },
+    preferCurrentTab:false, selfBrowserSurface:'exclude', surfaceSwitching:'include', systemAudio:'exclude', monitorTypeSurfaces:'exclude',
+  });
+  const videoTrack = selected.getVideoTracks()[0];
+  if (!videoTrack) { stopTracks(selected); throw new Error('No video track was selected'); }
+  videoTrack.contentHint = preset.hint;
+  videoTrack.addEventListener('ended', () => { if (stream && stream.getVideoTracks()[0] === videoTrack) stop('capture ended'); });
+  return selected;
+}
+
+async function openPip() {
+  if (pipWin || !window.documentPictureInPicture) return;
+  pipWin = await documentPictureInPicture.requestWindow({ width:360, height:172 });
+  const pipDocument = pipWin.document;
+  pipDocument.head.innerHTML = `<style>body{margin:0;padding:13px 14px;font:13px/1.4 -apple-system,sans-serif;background:#1b1e1a;color:#f1f2ed}.row{display:flex;gap:8px;margin-top:10px}button{flex:1;font:inherit;font-weight:650;border:0;border-radius:7px;padding:8px;color:#fff;background:#343a33}.stop{background:#bb3542}#keep,#line{color:#a1a59d;font-size:11px;margin-top:3px}#line{font:12px ui-monospace,monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}</style>`;
+  pipDocument.body.innerHTML = `<strong id="title">TabTelly</strong><div id="line">Starting…</div><div id="keep">Keep this window open while casting. Closing it stops the cast.</div><div class="row"><button id="sw">Switch tab…</button><button id="mu"></button><button id="st" class="stop">Stop</button></div>`;
+  const muteButton = pipDocument.getElementById('mu');
+  const label = () => { muteButton.textContent = $('localMute').checked ? 'Computer: muted' : 'Computer: sound on'; };
+  muteButton.onclick = () => { $('localMute').checked = !$('localMute').checked; label(); setLocalMute(pipWin.navigator); };
+  pipLabel = label; label(); pipDocument.getElementById('sw').onclick = () => switchTab(pipWin.navigator);
+  pipDocument.getElementById('st').onclick = () => stop('user (mini controller)');
+  pipWin.addEventListener('pagehide', () => { pipWin = null; if (stream) stop('mini controller closed'); });
+  $('pipWarn').hidden = true;
+}
+function updatePip(stats) {
+  if (!pipWin) return;
+  pipWin.document.getElementById('title').textContent = stats.status === 'connected' ? 'Casting to the TV' : 'TabTelly: ' + stats.status;
+  pipWin.document.getElementById('line').textContent = [stats.tvVideo || stats.sendVideo, stats.estLatency].filter(Boolean).join(' · ');
+}
+
+async function start() {
+  if (stream || !capabilitiesReady() || !tvOnline) return;
+  const operation = ++operationVersion;
+  showNotice(''); $('start').disabled = true; startKeepAlive();
+  try { await openPip(); } catch (error) { report({ event:'mini controller unavailable: ' + error.name }); }
+  let selected;
+  try { selected = await capture(); }
+  catch (error) {
+    report({ event:'capture cancelled/failed: ' + error.name }); if (pipWin) pipWin.close(); stopKeepAlive(); $('start').disabled = !tvOnline;
+    showNotice(error.name === 'NotAllowedError' ? 'No source was selected. Choose Cast a tab when you are ready.' : 'Chrome could not start capture. Check screen-recording permission and try again.', error.name !== 'NotAllowedError');
+    return;
+  }
+  if (operation !== operationVersion) { stopTracks(selected); return; }
+  stream = selected; $('pipWarn').hidden = !!pipWin;
+  const track = stream.getVideoTracks()[0], settings = track.getSettings ? track.getSettings() : {};
+  report({ event:'capture started', capture:{ width:settings.width, height:settings.height, frameRate:settings.frameRate, audioTracks:stream.getAudioTracks().length } });
+  $('preview').srcObject = stream; $('preview').style.display = 'block'; $('preview').play().catch(() => {});
+  $('switch').disabled = false; $('stop').disabled = false; negotiate('start');
+}
+async function setLocalMute(nav = navigator) {
+  pipLabel();
+  const audioTrack = stream && stream.getAudioTracks()[0];
+  if (!audioTrack) { showNotice('This source has no shared audio. Choose a Chrome tab with “Also share tab audio” enabled.'); return; }
+  const wantMuted = $('localMute').checked;
+  await audioTrack.applyConstraints({ suppressLocalAudioPlayback:wantMuted }).catch(() => {});
+  if (audioTrack.getSettings().suppressLocalAudioPlayback === wantMuted) { report({ event:'local audio ' + (wantMuted ? 'muted' : 'on') + ' (live)' }); return; }
+  report({ event:'local audio change needs source selection' }); await switchTab(nav);
+  const currentAudio = stream && stream.getAudioTracks()[0];
+  if (currentAudio) $('localMute').checked = !!currentAudio.getSettings().suppressLocalAudioPlayback; pipLabel();
+}
+async function switchTab(nav = navigator) {
+  if (!stream || switching) return;
+  const operation = operationVersion;
+  switching = true; $('switch').disabled = true; showNotice('');
+  let selected;
+  try { selected = await capture(nav); }
+  catch (error) {
+    if (operation !== operationVersion) { switching = false; $('switch').disabled = true; return; }
+    report({ event:'switch cancelled/failed: ' + error.name });
+    showNotice(error.name === 'NotAllowedError' ? 'The current cast is still running.' : 'Could not switch sources. The current cast is still running.', error.name !== 'NotAllowedError');
+    switching = false; $('switch').disabled = false; return;
+  }
+  if (operation !== operationVersion) { stopTracks(selected); switching = false; return; }
+  const old = stream;
+  try {
+    const senders = pc ? pc.getSenders() : [], videoSender = senders.find((sender) => sender.track && sender.track.kind === 'video');
+    const audioSender = senders.find((sender) => sender.track && sender.track.kind === 'audio');
+    const newVideo = selected.getVideoTracks()[0], newAudio = selected.getAudioTracks()[0];
+    if (videoSender && (audioSender || !newAudio)) {
+      await videoSender.replaceTrack(newVideo); if (audioSender) await audioSender.replaceTrack(newAudio || null);
+      if (operation !== operationVersion) { stopTracks(selected); return; }
+      stream = selected;
+    } else {
+      stream = selected; await negotiate('switch');
+      if (operation !== operationVersion) { stopTracks(old); return; }
+    }
+    $('preview').srcObject = selected; stopTracks(old); report({ event:'capture source switched', audioTracks:selected.getAudioTracks().length });
+  } catch (error) {
+    if (operation !== operationVersion) { stopTracks(selected); return; }
+    stream = old; stopTracks(selected); report({ event:'switch failed: ' + error.name }); showNotice('Could not switch sources. The original cast is still running.', true);
+  } finally { switching = false; $('switch').disabled = operation !== operationVersion || !stream; }
+}
+function stop(reason, options = {}) {
+  operationVersion++;
+  const hadSession = !!(stream || pc), oldStream = stream; stream = null; stopTracks(oldStream); closePc();
+  if (hadSession && options.notify !== false) send({ type:'bye' }, { keepalive:options.keepalive });
+  if (hadSession) report({ event:'stopped: ' + (reason || 'user') });
+  $('preview').srcObject = null; $('preview').style.display = 'none'; $('pipWarn').hidden = true;
+  if (pipWin) { const oldPip = pipWin; pipWin = null; oldPip.close(); } stopKeepAlive();
+  $('start').disabled = !tvOnline || !capabilitiesReady(); $('switch').disabled = true; $('stop').disabled = true; renderStats({ status:'idle' });
+}
+function closePc() {
+  clearTimeout(restartTimer); clearInterval(statsTimer); restartTimer = statsTimer = null;
+  const old = pc; pc = null; if (old) { old.onconnectionstatechange = null; try { old.close(); } catch {} }
+  pendingRemoteCandidates = []; prevOut = null; prevTrack = null;
+}
+function preferCodecs(transceiver, kind, order) {
+  if (!RTCRtpSender.getCapabilities || !transceiver.setCodecPreferences) return;
+  const codecs = RTCRtpSender.getCapabilities(kind).codecs;
+  const rank = (codec) => { const index = order.findIndex((mime) => codec.mimeType.toLowerCase() === mime); return index < 0 ? 99 : index; };
+  transceiver.setCodecPreferences([...codecs].sort((a,b) => rank(a) - rank(b) || (/packetization-mode=1/.test(b.sdpFmtpLine || '') - /packetization-mode=1/.test(a.sdpFmtpLine || ''))));
+}
+async function negotiate(why) {
+  if (!stream) return;
+  if (!tvOnline) { renderStats({ status:'waiting for the TV receiver' }); return; }
+  if (negotiating) return; negotiating = true;
+  try {
+    closePc();
+    const preset = PRESETS[$('quality').value], connection = new RTCPeerConnection({ iceServers:[] });
+    pc = connection; pcTvId = tvId; pendingRemoteCandidates = [];
+    const videoTransceiver = connection.addTransceiver(stream.getVideoTracks()[0], { direction:'sendonly', streams:[stream] });
+    const first = 'video/' + (OPT.get('codec') || 'h264').toLowerCase();
+    preferCodecs(videoTransceiver, 'video', [first,'video/h264','video/vp8','video/vp9','video/av1']);
+    const audioTrack = stream.getAudioTracks()[0]; if (audioTrack) connection.addTransceiver(audioTrack, { direction:'sendonly', streams:[stream] });
+    const parameters = videoTransceiver.sender.getParameters();
+    parameters.encodings = parameters.encodings && parameters.encodings.length ? parameters.encodings : [{}];
+    parameters.encodings[0].maxBitrate = preset.kbps * 1000; parameters.encodings[0].maxFramerate = preset.fps;
+    parameters.degradationPreference = preset.hint === 'detail' ? 'maintain-resolution' : 'balanced';
+    await videoTransceiver.sender.setParameters(parameters).catch(() => {});
+    connection.onicecandidate = (event) => {
+      if (pc === connection && event.candidate) send({ type:'candidate', candidate:event.candidate.toJSON ? event.candidate.toJSON() : event.candidate });
+    };
+    connection.onconnectionstatechange = () => {
+      if (pc !== connection) return;
+      const state = connection.connectionState; report({ event:'pc ' + state });
+      if (state === 'disconnected') { clearTimeout(restartTimer); restartTimer = setTimeout(() => { if (pc === connection) negotiate('disconnected'); }, 4000); }
+      if (state === 'failed') negotiate('failed');
+      if (state === 'connected') { clearTimeout(restartTimer); showNotice(''); setTv(true, 'Connected — casting to the TV'); }
+    };
+    const offer = await connection.createOffer();
+    if (pc !== connection || !stream) return;
+    // Keep standard browser GCC by default. Loss-only mode is an explicit diagnostic opt-in.
+    if (OPT.get('cc') === 'loss') {
+      offer.sdp = offer.sdp.split('\r\n').filter((line) => !/^a=rtcp-fb:\d+ (transport-cc|goog-remb)/.test(line) && !/^a=extmap:\d+ .*(transport-wide-cc|abs-send-time)/.test(line)).join('\r\n');
+    }
+    offer.sdp = offer.sdp.replace(/(a=fmtp:\d+ .*useinbandfec=1)/, '$1;stereo=1;sprop-stereo=1;maxaveragebitrate=128000');
+    await connection.setLocalDescription(offer);
+    if (pc !== connection || !stream) return;
+    await send({ type:'offer', sdp:{ type:'offer', sdp:connection.localDescription.sdp } });
+    if (pc !== connection || !stream) return;
+    report({ event:'offer sent (' + why + ')' }); statsTimer = setInterval(collectStats, 2000);
+    restartTimer = setTimeout(() => { if (pc === connection && connection.connectionState !== 'connected') negotiate('timeout'); }, 10000);
+  } catch (error) {
+    report({ event:'negotiation failed: ' + error.name }); showNotice('Could not connect to the TV. Keep the receiver open while TabTelly retries.', true);
+    if (stream && tvOnline) restartTimer = setTimeout(() => negotiate('retry'), 2000);
+  } finally { negotiating = false; }
+}
+async function onAnswer(message) {
+  const connection = pc; if (!connection || connection.signalingState !== 'have-local-offer') return;
+  const preset = PRESETS[$('quality').value], startBitrate = Math.round(preset.kbps * .6), minBitrate = Math.round(preset.kbps * .2);
+  const sdp = message.sdp.sdp.replace(/^a=fmtp:\d+ [^\r\n]*/gm, (line) => {
+    const payload = line.match(/^a=fmtp:(\d+)/)[1], video = new RegExp(`^a=rtpmap:${payload} (H264|VP8|VP9|AV1)/`, 'm').test(message.sdp.sdp);
+    return video ? `${line};x-google-start-bitrate=${startBitrate};x-google-min-bitrate=${minBitrate}` : line;
+  });
+  try {
+    await connection.setRemoteDescription({ type:'answer', sdp }); if (pc !== connection) return;
+    const queued = pendingRemoteCandidates; pendingRemoteCandidates = [];
+    for (const candidate of queued) await connection.addIceCandidate(candidate).catch(() => {});
+  } catch (error) { report({ event:'answer error: ' + error.name }); }
+}
+
+async function collectStats() {
+  const connection = pc; if (!connection) return;
+  try {
+    const result = await connection.getStats(); if (pc !== connection) return;
+    const out = { status:connection.connectionState }, codecs = {};
+    result.forEach((stat) => { if (stat.type === 'codec') codecs[stat.id] = stat.mimeType; });
+    const videoTrack = stream && stream.getVideoTracks()[0];
+    const trackStats = videoTrack && videoTrack.stats ? { d:videoTrack.stats.deliveredFrames, x:videoTrack.stats.discardedFrames, t:performance.now() } : null;
+    if (trackStats && prevTrack) out.captureFps = +((trackStats.d - prevTrack.d) * 1000 / (trackStats.t - prevTrack.t)).toFixed(1);
+    if (trackStats && prevTrack) out.captureDiscarded = trackStats.x - prevTrack.x;
+    prevTrack = trackStats; out.pageHidden = document.hidden; out.miniController = !!pipWin; out.keepAlive = keepAlive ? keepAlive.state : 'off';
+    result.forEach((stat) => {
+      if (stat.type === 'media-source' && stat.kind === 'video') out.sourceFps = stat.framesPerSecond;
+      if (stat.type === 'outbound-rtp' && stat.kind === 'video') {
+        const now = stat.timestamp; out.sendVideo = `${stat.frameWidth}x${stat.frameHeight} @ ${stat.framesPerSecond ?? '?'} fps`;
+        out.codec = (codecs[stat.codecId] || '').replace('video/','') + (stat.encoderImplementation ? ` (${stat.encoderImplementation})` : '');
+        if (prevOut) out.sendKbps = Math.round((stat.bytesSent - prevOut.bytes) * 8 / (now - prevOut.t));
+        out.encodeMs = stat.framesEncoded ? +(1000 * stat.totalEncodeTime / stat.framesEncoded).toFixed(1) : null;
+        out.limitedBy = stat.qualityLimitationReason; out.tgtKbps = stat.targetBitrate ? Math.round(stat.targetBitrate / 1000) : null;
+        out.keyFrames = stat.keyFramesEncoded; prevOut = { bytes:stat.bytesSent, t:now };
+      }
+      if (stat.type === 'outbound-rtp' && stat.kind === 'audio') out.sendAudio = (codecs[stat.codecId] || '').replace('audio/','') + ' ' + (stat.bytesSent / 1024 | 0) + ' KiB sent';
+      if (stat.type === 'candidate-pair' && stat.nominated && stat.state === 'succeeded') {
+        out.rttMs = Math.round((stat.currentRoundTripTime || 0) * 1000); out.bweKbps = stat.availableOutgoingBitrate ? Math.round(stat.availableOutgoingBitrate / 1000) : null;
+      }
+    });
+    const receiver = tvReport || {};
+    if (receiver.video) { out.tvVideo = `${receiver.video.w}x${receiver.video.h} @ ${receiver.video.fps ?? '?'} fps, decoded ${receiver.video.decoded}, lost ${receiver.video.lost}`; out.tvBuffers = `jitter ${receiver.video.jitterBufMs} ms, decode ${receiver.video.decodeMs} ms`; }
+    if (receiver.audio) out.tvAudio = `${receiver.audio.codec} ${receiver.audio.kbps} kbps, level ${receiver.audio.level}, ${receiver.muted ? 'muted on TV (press OK on the remote)' : 'playing'}`;
+    if (receiver.latencyMs != null) out.estLatency = `~${receiver.latencyMs + (out.encodeMs || 0) + 17} ms (WebRTC estimate)`;
+    if (receiver.e2eMs != null) out.measuredLatency = receiver.e2eMs + ' ms (timestamp diagnostic)';
+    report({ stats:out }); renderStats(out);
+  } catch (error) { report({ event:'stats error: ' + error.name }); }
+}
+function renderStats(stats) {
+  updatePip(stats);
+  const rows = Object.entries(stats).filter(([,value]) => value != null).map(([key,value]) => `<tr><td>${key}</td><td>${String(value).replaceAll('&','&amp;').replaceAll('<','&lt;')}</td></tr>`).join('');
+  $('stats').querySelector('tbody').innerHTML = rows;
+}
+function stopForPeerState(message, text) { stop(message.type, { notify:false }); setTv(false, text, message.type !== 'busy'); }
+function handle(message) {
+  if (message.type === 'answer') onAnswer(message);
+  else if (message.type === 'stop') stop('server stop', { notify:false });
+  else if (message.type === 'candidate') {
+    if (!pc || !pc.remoteDescription) pendingRemoteCandidates.push(message.candidate); else pc.addIceCandidate(message.candidate).catch(() => {});
+  } else if (message.type === 'tv-ready') {
+    tvCompatible = true; setTv(true, 'TV receiver connected — ready to cast');
+    if (message.id) tvId = message.id; if (stream) negotiate(message.type);
+  } else if (message.type === 'tv-joined') {
+    const healthy = message.id === pcTvId && pc && pc.connectionState === 'connected';
+    if (message.id && message.id !== tvId) tvCompatible = null;
+    if (message.id) tvId = message.id;
+    if (tvCompatible === true) { setTv(true, 'TV receiver connected — ready to cast'); if (stream && !healthy) negotiate(message.type); }
+    else setTv(false, 'TV connected — checking browser compatibility…');
+  } else if (message.type === 'presence') {
+    const wasOnline = tvOnline;
+    if (message.online && tvCompatible === false) setTv(false, 'This TV browser does not support WebRTC.', true);
+    else if (message.online && tvCompatible === null) setTv(false, 'TV connected — checking browser compatibility…');
+    else if (message.online) setTv(true, stream ? 'Connected — casting to the TV' : 'TV receiver connected — ready to cast');
+    else setTv(false, 'TV not connected — open the receiver URL on the TV');
+    if (message.online && tvCompatible === true && !wasOnline && stream) negotiate('tv back'); tvId = message.id;
+  } else if (message.type === 'busy') stopForPeerState(message, 'Another sender is active. This page will retry when it is available.');
+  else if (message.type === 'replaced') stopForPeerState(message, 'This sender was replaced by another TabTelly page.');
+  else if (message.type === 'unknown') stopForPeerState(message, 'The server no longer recognizes this sender. Reload the page to reconnect.');
+}
+async function poll() {
+  for (;;) {
+    try {
+      const response = await fetch(`/poll?role=${ROLE}&id=${encodeURIComponent(id)}`, { cache:'no-store', headers:authHeaders() });
+      if (response.status === 401) { stop('authorization lost', { notify:false }); setTv(false, 'Sender authorization expired. Reload this page.', true); return; }
+      if (response.status === 429) { setTv(false, 'The server is busy. Retrying shortly.'); await sleep(2000); continue; }
+      if (!response.ok) throw new Error('HTTP ' + response.status);
+      const messages = await response.json(); if (!Array.isArray(messages)) throw new Error('Invalid signaling response');
+      for (const message of messages) { handle(message); if (message.type === 'replaced' || message.type === 'unknown') return; }
+      if (messages.some((message) => message.type === 'busy')) await sleep(1000); showNotice('');
+    } catch {
+      setTv(false, 'Local server not reachable — retrying…', true); showNotice('Start the TabTelly server, then keep this page open. Reconnection is automatic.', true); await sleep(2000);
+    }
+  }
+}
+async function refreshStatus() {
+  try {
+    const response = await fetch('/status', { cache:'no-store', headers:authHeaders() });
+    if (response.status === 401) { showNotice('Sender authorization expired. Reload this page.', true); return; }
+    if (!response.ok) return;
+    const status = await response.json(); $('tvUrl').textContent = status.receiverUrl || CONFIG.receiverUrl || 'receiver URL unavailable';
+    tvReport = status.tv && status.tv.report || {};
+    const receiver = status.tv || {}, receiverCaps = receiver.caps;
+    if (receiverCaps && receiverCaps.webrtc === false) {
+      tvCompatible = false;
+      if (stream || pc) stop('receiver unsupported', { notify:false });
+      setTv(false, 'This TV browser does not support WebRTC.', true);
+      showNotice('Open the receiver in a TV browser with WebRTC support.', true);
+    } else if (receiverCaps && receiverCaps.webrtc === true) {
+      tvCompatible = true;
+      if (receiver.online) setTv(true, stream ? 'Connected — casting to the TV' : 'TV receiver connected — ready to cast');
+    }
+  } catch {}
+}
+function initialize() {
+  $('tvUrl').textContent = CONFIG.receiverUrl || 'receiver URL unavailable'; $('pairCode').textContent = CONFIG.pairCode || '------';
+  $('keepaliveNote').hidden = OPT.get('keepalive') !== '1';
+  if (!window.RTCPeerConnection) { setTv(false, 'This browser does not support WebRTC.', true); showNotice('Open this page in a current version of Chrome.', true); return; }
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) { setTv(false, 'Tab capture is not available in this browser.', true); showNotice('Open this page in Chrome on the computer you want to cast from.', true); return; }
+  setInterval(refreshStatus, 2000); refreshStatus(); poll();
+  if (OPT.has('autostart')) showNotice('Choose Cast a tab to start. Chrome requires a click before it can open the source picker.');
+}
+$('start').onclick = start; $('switch').onclick = () => switchTab(); $('stop').onclick = () => stop('user');
+$('latency').onclick = () => window.open('/latency', 'tabtelly-latency'); $('localMute').onchange = () => setLocalMute();
+$('pipReopen').onclick = (event) => { event.preventDefault(); openPip().catch(() => showNotice('The mini controller could not open. Keep this page visible while casting.')); };
+window.addEventListener('beforeunload', () => { if (stream || pc) send({ type:'bye' }, { keepalive:true }); });
+initialize();
+</script>
+</body>
+</html>

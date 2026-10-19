@@ -1,0 +1,372 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TabTelly Receiver</title>
+<style>
+  * { box-sizing:border-box }
+  html,body { margin:0; height:100%; background:#070806; overflow:hidden; color:#f2f3ee; font-family:-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif }
+  video { position:absolute; inset:0; width:100%; height:100%; object-fit:contain; background:#000 }
+  #idle { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; text-align:center; flex-direction:column; padding:5vw;
+    background:radial-gradient(circle at 50% 35%,#1d251f 0,#0b0d0b 58%,#070806 100%) }
+  #idle h1 { font-size:clamp(54px,8vw,96px); font-weight:650; line-height:1; margin:0 0 24px; letter-spacing:-.055em }
+  #idle p { font-size:clamp(22px,3vw,34px); color:#a8ada5; margin:8px 0; max-width:34em }
+  .dot { display:inline-block; width:18px; height:18px; border-radius:50%; background:#d79a3a; margin-right:12px }
+  .ok { background:#55b58c } .bad { background:#dd6873 }
+  #pairPanel { width:min(90vw,680px); margin-top:34px; padding:28px 30px 32px; border:1px solid #3c433a; border-radius:18px; background:rgba(23,27,23,.92) }
+  #pairPanel h2 { font-size:clamp(25px,3vw,34px); margin:0 0 8px } #pairPanel p { font-size:clamp(18px,2.2vw,25px); margin:0 0 20px }
+  #pairForm { display:flex; justify-content:center; gap:14px; flex-wrap:wrap }
+  #pairCode { width:9ch; padding:12px 16px; border:3px solid #667064; border-radius:10px; background:#0d100d; color:#fff; text-align:center;
+    font:600 clamp(30px,5vw,52px)/1 ui-monospace,Menlo,monospace; letter-spacing:.16em; font-variant-numeric:tabular-nums }
+  button { min-width:190px; padding:14px 22px; border:0; border-radius:10px; background:#4e9f8d; color:#07100c;
+    font:650 clamp(20px,2.4vw,28px)/1.2 -apple-system,"Segoe UI",sans-serif }
+  button:disabled { opacity:.5 } :focus-visible { outline:5px solid #f4a64f; outline-offset:5px }
+  #pairError { min-height:1.5em; margin-top:16px!important; color:#f0a8ae!important }
+  #msg { position:absolute; left:50%; bottom:60px; transform:translateX(-50%); padding:18px 32px; background:rgba(20,20,20,.9);
+    border:1px solid #4b5149; border-radius:12px; font-size:28px; display:none; white-space:nowrap }
+  #hud { position:absolute; top:16px; left:16px; font:18px/1.4 Menlo,monospace; background:rgba(0,0,0,.72); padding:8px 12px; border-radius:8px; display:none; white-space:pre }
+  [hidden] { display:none!important }
+</style>
+</head>
+<body>
+<video id="v" autoplay playsinline muted aria-label="Cast video"></video>
+<main id="idle">
+  <h1>TabTelly</h1>
+  <p><span id="dot" class="dot" aria-hidden="true"></span><span id="tvState" role="status" aria-live="polite">Pair this TV to begin</span></p>
+  <p id="instructions">Open TabTelly on your computer, then enter the six-digit pairing code shown there.</p>
+  <section id="pairPanel" aria-labelledby="pairHeading">
+    <h2 id="pairHeading">Pair this TV</h2>
+    <p>Find this code on your computer.</p>
+    <form id="pairForm">
+      <label for="pairCode" style="position:absolute;left:-10000px">Six-digit pairing code</label>
+      <input id="pairCode" name="code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" required aria-describedby="pairError">
+      <button id="pairButton" type="submit">Pair TV</button>
+    </form>
+    <p id="pairError" role="alert" aria-live="polite"></p>
+  </section>
+</main>
+<div id="msg" role="status" aria-live="polite"></div>
+<div id="hud" aria-hidden="true"></div>
+<script>
+// ES5 on purpose: TV browsers often run old engines.
+/* global Promise */
+(function () {
+  var ROLE = 'tv';
+  var id = 'tv-' + Math.random().toString(36).slice(2, 10);
+  var video = document.getElementById('v');
+  var idle = document.getElementById('idle');
+  var stateEl = document.getElementById('tvState');
+  var dot = document.getElementById('dot');
+  var pairPanel = document.getElementById('pairPanel');
+  var pairForm = document.getElementById('pairForm');
+  var pairInput = document.getElementById('pairCode');
+  var pairButton = document.getElementById('pairButton');
+  var pairError = document.getElementById('pairError');
+  var msgEl = document.getElementById('msg');
+  var hud = document.getElementById('hud');
+  var pc = null, pendingCandidates = [], statsTimer = null, prev = {}, msgTimer = null;
+  var soundOn = false, clockOffset = 0, hudOn = false, probeMisses = 0;
+  var token = loadToken(), registered = false, sessionGeneration = 0, stopped = false;
+  var webRtcCapable = !!window.RTCPeerConnection;
+
+  function loadToken() {
+    try { return sessionStorage.getItem('tabcast.receiverToken') || ''; } catch (e) { void e; return ''; }
+  }
+  function saveToken(value) {
+    try {
+      if (value) sessionStorage.setItem('tabcast.receiverToken', value);
+      else sessionStorage.removeItem('tabcast.receiverToken');
+    } catch (e) { void e; }
+  }
+  function xhr(method, url, body, cb, unauthenticated) {
+    var request = new XMLHttpRequest();
+    request.open(method, url, true);
+    request.timeout = 30000;
+    request.onload = function () {
+      var data = null;
+      try { data = JSON.parse(request.responseText); } catch (e) { void e; }
+      if (cb) cb(request.status >= 200 && request.status < 300 ? null : request.status, data);
+    };
+    request.onerror = request.ontimeout = function () { if (cb) cb('net', null); };
+    if (!unauthenticated && token) request.setRequestHeader('X-Tabcast-Token', token);
+    if (body) { request.setRequestHeader('Content-Type', 'application/json'); request.send(JSON.stringify(body)); }
+    else request.send();
+  }
+  function send(message) {
+    if (!registered || !token) return;
+    message.from = ROLE; message.id = id;
+    xhr('POST', '/msg', message, protectedResult);
+  }
+  function report(message) {
+    if (!registered || !token) return;
+    message.from = ROLE; message.role = ROLE; message.id = id;
+    xhr('POST', '/report', message, protectedResult);
+  }
+  function protectedResult(error) {
+    if (error === 401) requirePairing('Pairing expired. Enter the code shown on your computer.');
+    else if (error === 409) requirePairing('This receiver was replaced or disconnected. Enter the current code to reconnect.');
+    else if (error === 429) setState('Too many requests. Waiting before retrying…', false, true);
+  }
+  function setState(text, ok, bad) {
+    stateEl.textContent = text;
+    dot.className = ok ? 'dot ok' : bad ? 'dot bad' : 'dot';
+  }
+  function toast(text, ms) {
+    msgEl.textContent = text; msgEl.style.display = 'block'; clearTimeout(msgTimer);
+    if (ms) msgTimer = setTimeout(function () { msgEl.style.display = 'none'; }, ms);
+  }
+  function requirePairing(message) {
+    sessionGeneration++; registered = false; stopped = false; token = ''; saveToken('');
+    teardown('', false); idle.style.display = 'flex'; pairPanel.hidden = false;
+    pairButton.disabled = false; pairError.textContent = message || ''; setState('Pair this TV to begin', false, !!message);
+    setTimeout(function () { try { pairInput.focus(); } catch (e) { void e; } }, 0);
+  }
+  function beginSession() {
+    sessionGeneration++; registered = false; stopped = false; pairPanel.hidden = true; pairError.textContent = '';
+    setState('Pairing confirmed. Connecting…'); poll(sessionGeneration);
+  }
+
+  pairForm.addEventListener('submit', function (event) {
+    event.preventDefault();
+    var code = String(pairInput.value || '').replace(/[^0-9]/g, '');
+    if (!/^[0-9]{6}$/.test(code)) { pairError.textContent = 'Enter all six digits.'; pairInput.focus(); return; }
+    pairButton.disabled = true; pairError.textContent = ''; setState('Checking pairing code…');
+    xhr('POST', '/pair', { code: code }, function (error, data) {
+      pairButton.disabled = false;
+      if (!error && data && data.token) {
+        token = data.token; saveToken(token); pairInput.value = ''; beginSession(); return;
+      }
+      if (error === 429) pairError.textContent = 'Too many attempts. Wait a moment, then try again.';
+      else if (error === 'net') pairError.textContent = 'The receiver could not reach TabTelly. Check the network and try again.';
+      else pairError.textContent = 'Incorrect pairing code. Check the code on your computer.';
+      setState(error === 429 ? 'Pairing paused. Try again shortly.' : 'Pairing code not accepted', false, true);
+      pairInput.focus();
+    }, true);
+  });
+  pairInput.addEventListener('input', function () { pairInput.value = pairInput.value.replace(/[^0-9]/g, '').slice(0, 6); pairError.textContent = ''; });
+
+  function caps() {
+    var result = { ua:navigator.userAgent, webrtc:webRtcCapable,
+      screen:screen.width + 'x' + screen.height + '@' + (window.devicePixelRatio || 1),
+      viewport:window.innerWidth + 'x' + window.innerHeight, videoCodecs:[], audioCodecs:[] };
+    try {
+      if (window.RTCRtpReceiver && RTCRtpReceiver.getCapabilities) {
+        var seen = {};
+        RTCRtpReceiver.getCapabilities('video').codecs.forEach(function (codec) {
+          if (!seen[codec.mimeType]) { seen[codec.mimeType] = 1; result.videoCodecs.push(codec.mimeType.replace('video/', '')); }
+        });
+        seen = {};
+        RTCRtpReceiver.getCapabilities('audio').codecs.forEach(function (codec) {
+          if (!seen[codec.mimeType]) { seen[codec.mimeType] = 1; result.audioCodecs.push(codec.mimeType.replace('audio/', '')); }
+        });
+      }
+    } catch (e) { result.capsError = String(e); }
+    result.mse = !!window.MediaSource;
+    return result;
+  }
+  function syncClock() {
+    var best = null, attempts = 0;
+    function once() {
+      var start = Date.now();
+      xhr('GET', '/time', null, function (error, data) {
+        var end = Date.now();
+        if (!error && data) {
+          var rtt = end - start;
+          if (!best || rtt < best.rtt) best = { rtt:rtt, offset:data.t - (start + rtt / 2) };
+        } else if (error === 401) { requirePairing('Pairing expired. Enter the current code.'); return; }
+        attempts++;
+        if (attempts < 8 && token) setTimeout(once, 150);
+        else if (best) clockOffset = best.offset;
+      });
+    }
+    once();
+  }
+
+  function teardown(reason, preserveCandidates) {
+    var old = pc; pc = null;
+    if (old) { old.onconnectionstatechange = null; try { old.close(); } catch (e) { void e; } }
+    if (!preserveCandidates) pendingCandidates = [];
+    clearInterval(statsTimer); statsTimer = null; prev = {};
+    video.srcObject = null; idle.style.display = 'flex';
+    if (reason && registered) report({ event:'teardown: ' + reason });
+  }
+  function newPeer() {
+    teardown('', true);
+    var connection = new RTCPeerConnection({ iceServers:[] });
+    pc = connection; prev = {};
+    connection.ontrack = function (event) {
+      var media = event.streams && event.streams[0];
+      if (!media) { media = video.srcObject || new MediaStream(); media.addTrack(event.track); }
+      if (video.srcObject !== media) video.srcObject = media;
+      startPlayback();
+    };
+    connection.onicecandidate = function (event) {
+      if (pc === connection && event.candidate) send({ type:'candidate', candidate:event.candidate.toJSON ? event.candidate.toJSON() : event.candidate });
+    };
+    connection.onconnectionstatechange = function () {
+      if (pc !== connection) return;
+      var state = connection.connectionState; report({ event:'pc ' + state });
+      if (state === 'connected') setState('Connected — receiving cast', true);
+      if (state === 'failed') {
+        teardown('connection failed', false); setState('Connection lost. Waiting for the computer…', false, true); send({ type:'tv-ready' });
+      }
+    };
+    statsTimer = setInterval(collectStats, 2000);
+    return connection;
+  }
+  function onOffer(message) {
+    var connection = newPeer();
+    probeMisses = 0; setState('Connected — starting stream…', true);
+    connection.setRemoteDescription(message.sdp).then(function () {
+      var queued = pendingCandidates; pendingCandidates = [];
+      var additions = [];
+      for (var i = 0; i < queued.length; i++) additions.push(connection.addIceCandidate(queued[i]).catch(function () {}));
+      return Promise.all(additions);
+    }).then(function () { return connection.createAnswer(); })
+      .then(function (answer) { return connection.setLocalDescription(answer); })
+      .then(function () {
+        if (pc === connection) send({ type:'answer', sdp:{ type:connection.localDescription.type, sdp:connection.localDescription.sdp } });
+      }).catch(function (error) {
+        if (pc !== connection) return;
+        report({ event:'offer error: ' + error }); setState('Could not start this cast. Waiting for the computer to retry.', false, true);
+      });
+  }
+  function startPlayback() {
+    idle.style.display = 'none'; video.muted = !soundOn;
+    var result = video.play();
+    if (result && result.then) {
+      result.then(function () { if (!soundOn) tryUnmute(); })
+        .catch(function () { video.muted = true; video.play(); toast('Press OK on the remote to turn on sound'); });
+    }
+  }
+  function tryUnmute() {
+    video.muted = false;
+    var result = video.play();
+    if (result && result.then) {
+      result.then(function () { soundOn = true; msgEl.style.display = 'none'; })
+        .catch(function () { video.muted = true; video.play(); toast('Press OK on the remote to turn on sound'); });
+    } else soundOn = true;
+  }
+  document.addEventListener('keydown', function (event) {
+    if (event.keyCode === 73 || event.keyCode === 403) { hudOn = !hudOn; hud.style.display = hudOn ? 'block' : 'none'; return; }
+    soundOn = true; video.muted = false; video.play(); msgEl.style.display = 'none';
+    var element = document.documentElement, requestFullscreen = element.requestFullscreen || element.webkitRequestFullscreen;
+    if (requestFullscreen && !document.fullscreenElement && !document.webkitFullscreenElement) { try { requestFullscreen.call(element); } catch (e) { void e; } }
+  });
+  document.addEventListener('click', function (event) {
+    if (event.target === pairInput || event.target === pairButton) return;
+    if (video.srcObject) { soundOn = true; video.muted = false; video.play(); msgEl.style.display = 'none'; }
+  });
+
+  var canvas = document.createElement('canvas'), context = canvas.getContext('2d');
+  function readLatencyBars() {
+    if (!video.videoWidth) return null;
+    var width = 256, height = Math.round(256 * video.videoHeight / video.videoWidth);
+    canvas.width = width; canvas.height = height;
+    try { context.drawImage(video, 0, 0, width, height); } catch (e) { void e; return null; }
+    var y = Math.round(height * .04), cells = 48, bits = [], row = context.getImageData(0, y, width, 1).data;
+    for (var i = 0; i < cells; i++) {
+      var x = Math.floor((i + .5) * width / cells), offset = x * 4;
+      bits.push((row[offset] + row[offset + 1] + row[offset + 2]) / 3 > 128 ? 1 : 0);
+    }
+    if (bits.slice(0, 4).join('') !== '1010' || bits[46] !== 1 || bits[47] !== 1) return null;
+    var timestamp = 0;
+    for (var j = 4; j < 46; j++) timestamp = timestamp * 2 + bits[j];
+    var measured = Date.now() + clockOffset - timestamp;
+    return measured > -50 && measured < 10000 ? Math.round(measured) : null;
+  }
+  function collectStats() {
+    var connection = pc;
+    if (!connection) return;
+    connection.getStats().then(function (result) {
+      if (pc !== connection) return;
+      var out = { pc:connection.connectionState, muted:video.muted, paused:video.paused,
+        el:video.videoWidth + 'x' + video.videoHeight, t:Math.round(video.currentTime * 10) / 10 };
+      var codecs = {}, rtt = null, now = Date.now();
+      result.forEach(function (stat) { if (stat.type === 'codec') codecs[stat.id] = stat.mimeType; });
+      result.forEach(function (stat) {
+        if (stat.type === 'candidate-pair' && stat.nominated && stat.state === 'succeeded' && stat.currentRoundTripTime != null) rtt = stat.currentRoundTripTime * 1000;
+        if (stat.type !== 'inbound-rtp') return;
+        var kind = stat.kind || stat.mediaType, previous = prev[kind], kbps = null;
+        if (previous) kbps = Math.round((stat.bytesReceived - previous.bytes) * 8 / (now - previous.time));
+        prev[kind] = { bytes:stat.bytesReceived, time:now };
+        if (kind === 'video') {
+          out.video = { w:stat.frameWidth, h:stat.frameHeight, fps:stat.framesPerSecond, decoded:stat.framesDecoded, dropped:stat.framesDropped,
+            lost:stat.packetsLost, kbps:kbps, codec:(codecs[stat.codecId] || '').replace('video/', ''),
+            jitterBufMs:stat.jitterBufferEmittedCount ? Math.round(1000 * stat.jitterBufferDelay / stat.jitterBufferEmittedCount) : null,
+            decodeMs:stat.framesDecoded ? Math.round(1000 * stat.totalDecodeTime / stat.framesDecoded * 10) / 10 : null, freezes:stat.freezeCount };
+        } else if (kind === 'audio') {
+          out.audio = { kbps:kbps, codec:(codecs[stat.codecId] || '').replace('audio/', ''), lost:stat.packetsLost,
+            level:stat.audioLevel != null ? Math.round(stat.audioLevel * 1000) / 1000 : null,
+            jitterBufMs:stat.jitterBufferEmittedCount ? Math.round(1000 * stat.jitterBufferDelay / stat.jitterBufferEmittedCount) : null,
+            concealed:stat.concealedSamples, samples:stat.totalSamplesReceived };
+        }
+      });
+      out.rttMs = rtt != null ? Math.round(rtt) : null;
+      if (out.video && out.video.jitterBufMs != null) out.latencyMs = Math.round(out.video.jitterBufMs + (out.video.decodeMs || 0) + (rtt || 0) / 2);
+      var measured = probeMisses < 5 ? readLatencyBars() : null;
+      if (measured != null) probeMisses = 0; else probeMisses++;
+      out.e2eMs = measured; report({ stats:out });
+      if (hudOn) hud.textContent = JSON.stringify(out, null, 1).replace(/[{}"]/g, '');
+    }, function (error) { report({ event:'stats error: ' + error }); });
+  }
+
+  var backoff = 500, lastSender = null;
+  function onRegistered() {
+    report({ caps:caps() });
+    if (!webRtcCapable) { setState('Paired, but this TV browser does not support WebRTC.', false, true); return; }
+    setState('Paired — ready for the computer', true); syncClock(); send({ type:'tv-ready' });
+  }
+  function poll(generation) {
+    if (!token || generation !== sessionGeneration || stopped) return;
+    xhr('GET', '/poll?role=' + ROLE + '&id=' + encodeURIComponent(id), null, function (error, messages) {
+      if (generation !== sessionGeneration || stopped) return;
+      if (error === 401) { requirePairing('Pairing expired. Enter the current code.'); return; }
+      if (error === 429) {
+        setState('Too many requests. Retrying shortly…', false, true);
+        setTimeout(function () { poll(generation); }, 3000); return;
+      }
+      if (error || !messages) {
+        setState('Computer not reachable — retrying…', false, true); backoff = Math.min(backoff * 2, 5000);
+        setTimeout(function () { poll(generation); }, backoff); return;
+      }
+      backoff = 500;
+      if (!registered) { registered = true; onRegistered(); }
+      for (var i = 0; i < messages.length; i++) handle(messages[i]);
+      if (!stopped && token && generation === sessionGeneration) poll(generation);
+    });
+  }
+  function handle(message) {
+    if (!webRtcCapable && (message.type === 'offer' || message.type === 'candidate' || message.type === 'sender-joined' || message.type === 'presence')) {
+      setState('Paired, but this TV browser does not support WebRTC.', false, true);
+      return;
+    }
+    if (message.type === 'offer') onOffer(message);
+    else if (message.type === 'candidate') {
+      if (pc && pc.remoteDescription) pc.addIceCandidate(message.candidate).catch(function () {});
+      else pendingCandidates.push(message.candidate);
+    } else if (message.type === 'bye') {
+      teardown('', false); setState('Cast stopped — ready for the computer', true);
+    } else if (message.type === 'sender-joined') {
+      if (!pc) send({ type:'tv-ready' });
+    } else if (message.type === 'presence') {
+      if (!pc) setState(message.online ? 'Connected — computer is ready to cast' : 'Paired — waiting for the computer', message.online);
+      if (message.online && lastSender !== message.id && !pc) send({ type:'tv-ready' });
+      lastSender = message.id;
+    } else if (message.type === 'busy') {
+      teardown('', false); setState('Another receiver is active. Retrying shortly…', false, true);
+    } else if (message.type === 'unknown') {
+      teardown('', false); requirePairing('This receiver session is no longer recognized. Enter the current code.');
+    } else if (message.type === 'replaced') {
+      teardown('', false); stopped = true; requirePairing('This screen was replaced by another receiver. Pair again to use this screen.');
+    }
+  }
+
+  if (token) beginSession();
+  else requirePairing('');
+  setInterval(function () { if (registered && token) syncClock(); }, 60000);
+})();
+</script>
+</body>
+</html>

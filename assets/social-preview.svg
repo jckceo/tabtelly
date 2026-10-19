@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="640" viewBox="0 0 1280 640" role="img" aria-labelledby="title desc">
+<title id="title">TabTelly — your browser tab, on the TV</title><desc id="desc">An experimental local WebRTC casting utility. Chrome tab with audio to a compatible TV browser. No TV app or cloud relay.</desc>
+<rect width="1280" height="640" fill="#f4f5eb"/><path d="M936 0h344v640H936z" fill="#173e32"/>
+<g fill="#173e32" font-family="Arial,Helvetica,sans-serif"><text x="80" y="118" font-size="30" font-weight="700" letter-spacing="1">TABTELLY</text><text x="76" y="260" font-size="76" font-weight="700" letter-spacing="-3">Your browser tab.</text><text x="76" y="346" font-size="76" font-weight="700" letter-spacing="-3">On the TV.</text><text x="80" y="428" font-size="27">Chrome tab + audio → compatible TV browser</text><text x="80" y="470" font-size="27">Local Wi-Fi. WebRTC. No TV app.</text><text x="80" y="565" font-size="19" letter-spacing="1">OPEN SOURCE · EXPERIMENTAL 0.1.0 · MIT LICENSE</text></g>
+<g stroke="#f4f5eb" stroke-width="9" stroke-linecap="round" stroke-linejoin="round" fill="none"><path d="M1000 227h74l17 20h125v142h-216z"/><path d="M1076 421h66m-33-32v32"/></g><path d="m1087 281 56 34-56 34z" fill="#b7e09a"/>
+</svg>

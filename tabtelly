@@ -1,0 +1,674 @@
+#!/usr/bin/env python3
+"""Portable command-line launcher for the TabTelly server."""
+
+from __future__ import annotations
+
+import argparse
+import ipaddress
+import json
+import os
+from pathlib import Path
+import shutil
+import socket
+import stat
+import subprocess
+import sys
+import time
+from typing import Any
+from urllib.error import HTTPError, URLError
+from urllib.request import ProxyHandler, Request, build_opener
+from urllib.parse import urlsplit
+
+
+VERSION = "0.1.0"
+APP_ID = "tabcast"
+HERE = Path(__file__).resolve().parent
+SERVER = HERE / "server.py"
+LOCAL_OPENER = build_opener(ProxyHandler({}))
+
+
+class CliError(Exception):
+    """An expected problem that should be shown without a traceback."""
+
+
+def env_value(primary: str, legacy: str, default: str | None = None) -> str | None:
+    return os.environ.get(primary) or os.environ.get(legacy) or default
+
+
+def configured_port() -> int:
+    raw = env_value("TABTELLY_PORT", "TABCAST_PORT", "8090")
+    try:
+        port = int(raw or "")
+    except ValueError as exc:
+        raise CliError(f"Invalid port: {raw!r}") from exc
+    if not 1 <= port <= 65535:
+        raise CliError(f"Invalid port: {port}; expected 1..65535")
+    return port
+
+
+class Config:
+    def __init__(self) -> None:
+        self.port = configured_port()
+        self.bind = env_value("TABTELLY_BIND", "TABCAST_BIND", "0.0.0.0") or "0.0.0.0"
+        if self.bind not in ("0.0.0.0", "127.0.0.1"):
+            raise CliError("TABTELLY_BIND must be 0.0.0.0 or 127.0.0.1")
+        self.lan_ip = env_value("TABTELLY_LAN_IP", "TABCAST_LAN_IP")
+        if self.lan_ip:
+            try:
+                address = ipaddress.IPv4Address(self.lan_ip)
+            except ipaddress.AddressValueError as exc:
+                raise CliError("TABTELLY_LAN_IP must be a valid IPv4 address") from exc
+            if address.is_unspecified or address.is_multicast or address == ipaddress.IPv4Address("255.255.255.255"):
+                raise CliError("TABTELLY_LAN_IP must be a unicast IPv4 address")
+        configured_runtime = env_value("TABTELLY_RUNTIME_DIR", "TABCAST_RUNTIME_DIR")
+        self.default_runtime = configured_runtime is None
+        self.runtime = (
+            Path(os.path.abspath(os.path.expanduser(configured_runtime)))
+            if configured_runtime
+            else HERE / ".run" / str(self.port)
+        )
+        self.session_file = self.runtime / "session.json"
+        self.log_file = self.runtime / "server.log"
+
+    @property
+    def base_url(self) -> str:
+        return f"http://127.0.0.1:{self.port}"
+
+
+def refuse_symlink(path: Path, label: str) -> os.stat_result | None:
+    try:
+        details = path.lstat()
+    except FileNotFoundError:
+        return None
+    if stat.S_ISLNK(details.st_mode):
+        raise CliError(f"Refusing {label} symbolic link: {path}")
+    return details
+
+
+def make_private_directory(path: Path, label: str) -> None:
+    details = refuse_symlink(path, label)
+    if details is not None and not stat.S_ISDIR(details.st_mode):
+        raise CliError(f"{label.capitalize()} is not a directory: {path}")
+    path.mkdir(mode=0o700, parents=True, exist_ok=True)
+    details = refuse_symlink(path, label)
+    if details is None or not stat.S_ISDIR(details.st_mode):
+        raise CliError(f"Could not create {label}: {path}")
+    if os.name == "posix":
+        flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
+        try:
+            descriptor = os.open(path, flags)
+        except OSError as exc:
+            raise CliError(f"Could not safely open {label}: {path}: {exc}") from exc
+        try:
+            opened = os.fstat(descriptor)
+            current = path.lstat()
+            if not stat.S_ISDIR(opened.st_mode) or not os.path.samestat(opened, current):
+                raise CliError(f"{label.capitalize()} changed while opening: {path}")
+            os.fchmod(descriptor, 0o700)
+        except OSError as exc:
+            raise CliError(f"Could not make {label} private: {path}: {exc}") from exc
+        finally:
+            os.close(descriptor)
+    else:
+        try:
+            path.chmod(0o700)
+        except OSError:
+            pass
+    if os.name == "posix" and path.stat().st_mode & 0o077:
+        raise CliError(f"Could not make {label} private: {path}")
+
+
+def validate_runtime_paths(config: Config) -> None:
+    if config.default_runtime:
+        refuse_symlink(HERE / ".run", "runtime root")
+    refuse_symlink(config.runtime, "runtime directory")
+    refuse_symlink(config.session_file, "session file")
+    refuse_symlink(config.log_file, "log file")
+
+
+def private_directory(config: Config) -> None:
+    validate_runtime_paths(config)
+    if config.default_runtime:
+        make_private_directory(HERE / ".run", "runtime root")
+    make_private_directory(config.runtime, "runtime directory")
+    validate_runtime_paths(config)
+
+
+def open_regular_file(path: Path, flags: int, mode: int = 0o600) -> int:
+    details = refuse_symlink(path, "state file")
+    if details is not None and not stat.S_ISREG(details.st_mode):
+        raise CliError(f"State path is not a regular file: {path}")
+    safe_flags = flags | getattr(os, "O_NOFOLLOW", 0)
+    parent_descriptor: int | None = None
+    try:
+        if os.name == "posix":
+            directory_flags = (
+                os.O_RDONLY
+                | getattr(os, "O_DIRECTORY", 0)
+                | getattr(os, "O_NOFOLLOW", 0)
+            )
+            parent_descriptor = os.open(path.parent, directory_flags)
+            opened_parent = os.fstat(parent_descriptor)
+            current_parent = path.parent.lstat()
+            if not stat.S_ISDIR(opened_parent.st_mode) or not os.path.samestat(
+                opened_parent, current_parent
+            ):
+                os.close(parent_descriptor)
+                parent_descriptor = None
+                raise CliError(f"State directory changed while opening: {path.parent}")
+            descriptor = os.open(path.name, safe_flags, mode, dir_fd=parent_descriptor)
+        else:
+            descriptor = os.open(path, safe_flags, mode)
+    except FileNotFoundError:
+        if parent_descriptor is not None:
+            os.close(parent_descriptor)
+        raise
+    except OSError as exc:
+        if parent_descriptor is not None:
+            os.close(parent_descriptor)
+        raise CliError(f"Could not safely open state file {path}: {exc}") from exc
+    try:
+        opened = os.fstat(descriptor)
+        current = (
+            os.stat(path.name, dir_fd=parent_descriptor, follow_symlinks=False)
+            if parent_descriptor is not None
+            else path.lstat()
+        )
+        if not stat.S_ISREG(opened.st_mode) or not os.path.samestat(opened, current):
+            raise CliError(f"State file changed while opening: {path}")
+        try:
+            os.fchmod(descriptor, 0o600)
+        except (AttributeError, OSError):
+            pass
+        return descriptor
+    except BaseException:
+        os.close(descriptor)
+        raise
+    finally:
+        if parent_descriptor is not None:
+            os.close(parent_descriptor)
+
+
+def read_session(config: Config) -> dict[str, Any] | None:
+    try:
+        descriptor = open_regular_file(config.session_file, os.O_RDONLY)
+    except FileNotFoundError:
+        return None
+    try:
+        with os.fdopen(descriptor, "r", encoding="utf-8") as stream:
+            value = json.load(stream)
+    except ValueError:
+        return None
+    if not isinstance(value, dict):
+        return None
+    required = {
+        "adminToken": str,
+        "senderToken": str,
+        "pairCode": str,
+        "instance": str,
+        "pid": int,
+        "port": int,
+    }
+    if any(not isinstance(value.get(key), value_type) for key, value_type in required.items()):
+        return None
+    if not value["adminToken"] or not value["instance"] or value["pid"] <= 0:
+        return None
+    if value["port"] != config.port:
+        return None
+    return value
+
+
+def request_json(
+    config: Config,
+    path: str,
+    *,
+    token: str | None = None,
+    method: str = "GET",
+    timeout: float = 0.7,
+) -> dict[str, Any] | None:
+    headers = {"Accept": "application/json"}
+    if token:
+        headers["X-Tabcast-Token"] = token
+    body = b"{}" if method != "GET" else None
+    if body is not None:
+        headers["Content-Type"] = "application/json"
+    request = Request(config.base_url + path, data=body, headers=headers, method=method)
+    try:
+        with LOCAL_OPENER.open(request, timeout=timeout) as response:
+            value = json.load(response)
+    except (HTTPError, URLError, OSError, ValueError, TimeoutError):
+        return None
+    return value if isinstance(value, dict) else None
+
+
+def health(config: Config) -> dict[str, Any] | None:
+    return request_json(config, "/health")
+
+
+def is_tabtelly_health(value: dict[str, Any] | None) -> bool:
+    return bool(
+        value
+        and value.get("app") == APP_ID
+        and isinstance(value.get("instance"), str)
+        and isinstance(value.get("pid"), int)
+    )
+
+
+def identities_match(session: dict[str, Any], live: dict[str, Any]) -> bool:
+    return (
+        live.get("app") == APP_ID
+        and live.get("version") == VERSION
+        and live.get("instance") == session.get("instance")
+        and live.get("pid") == session.get("pid")
+    )
+
+
+def port_has_listener(port: int) -> bool:
+    try:
+        with socket.create_connection(("127.0.0.1", port), timeout=0.25):
+            return True
+    except OSError:
+        return False
+
+
+def managed_server(config: Config) -> tuple[dict[str, Any] | None, dict[str, Any] | None, str]:
+    validate_runtime_paths(config)
+    session = read_session(config)
+    live = health(config)
+    if session and live and identities_match(session, live):
+        return session, live, "managed"
+    if live and is_tabtelly_health(live):
+        return session, live, "different"
+    if live or port_has_listener(config.port):
+        return session, live, "occupied"
+    return session, None, "stopped"
+
+
+def server_environment(config: Config) -> dict[str, str]:
+    env = os.environ.copy()
+    values = {
+        "TABTELLY_PORT": str(config.port),
+        "TABCAST_PORT": str(config.port),
+        "TABTELLY_BIND": config.bind,
+        "TABCAST_BIND": config.bind,
+        "TABTELLY_RUNTIME_DIR": str(config.runtime),
+        "TABCAST_RUNTIME_DIR": str(config.runtime),
+    }
+    if config.lan_ip:
+        values["TABTELLY_LAN_IP"] = config.lan_ip
+        values["TABCAST_LAN_IP"] = config.lan_ip
+    env.update(values)
+    return env
+
+
+def terminate_child(child: subprocess.Popen[bytes]) -> None:
+    """Clean up only a Popen object created during this invocation."""
+    if child.poll() is not None:
+        return
+    child.terminate()
+    try:
+        child.wait(timeout=2)
+    except subprocess.TimeoutExpired:
+        child.kill()
+        child.wait(timeout=2)
+
+
+def launch_server(config: Config) -> subprocess.Popen[bytes]:
+    private_directory(config)
+    if not SERVER.is_file():
+        raise CliError(f"Server not found: {SERVER}")
+    log_descriptor = open_regular_file(
+        config.log_file, os.O_WRONLY | os.O_CREAT | os.O_APPEND
+    )
+    log_handle = os.fdopen(log_descriptor, "ab", buffering=0)
+    try:
+        options: dict[str, Any] = {
+            "cwd": str(HERE),
+            "env": server_environment(config),
+            "stdin": subprocess.DEVNULL,
+            "stdout": log_handle,
+            "stderr": subprocess.STDOUT,
+            "close_fds": True,
+        }
+        if os.name == "nt":
+            options["creationflags"] = (
+                subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS
+            )
+        else:
+            options["start_new_session"] = True
+        return subprocess.Popen([sys.executable, "-u", str(SERVER)], **options)
+    finally:
+        log_handle.close()
+
+
+def wait_for_started(
+    config: Config, child: subprocess.Popen[bytes], timeout: float = 8.0
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if child.poll() is not None:
+            raise CliError(
+                f"Server failed to start (exit {child.returncode}); see {config.log_file}"
+            )
+        session = read_session(config)
+        live = health(config)
+        if session and live and identities_match(session, live):
+            if session["pid"] != child.pid:
+                raise CliError("Server reported an unexpected process identity")
+            return session, live
+        time.sleep(0.1)
+    raise CliError(f"Server did not become ready; see {config.log_file}")
+
+
+def fetch_status(config: Config, session: dict[str, Any]) -> dict[str, Any]:
+    status = request_json(config, "/status", token=session["adminToken"])
+    if not status:
+        raise CliError("The server is running, but its status endpoint did not respond")
+    return status
+
+
+def print_urls(config: Config, status: dict[str, Any]) -> None:
+    receiver_url = status.get("receiverUrl")
+    sender_url = status.get("senderUrl")
+    if receiver_url:
+        print(f"  TV:       {receiver_url}")
+    if sender_url:
+        print(f"  Computer: {sender_url}")
+    pair_code = status.get("pairCode")
+    if pair_code:
+        print(f"  Pairing code: {pair_code}")
+    if config.bind == "127.0.0.1":
+        print("  Warning: TABTELLY_BIND=127.0.0.1 is local only; TVs cannot connect.")
+    if config.lan_ip is None and isinstance(receiver_url, str):
+        host = urlsplit(receiver_url).hostname
+        if host in ("127.0.0.1", "localhost", "::1"):
+            print(
+                "  Warning: automatic LAN detection returned a loopback address; "
+                "set TABTELLY_LAN_IP for TV access."
+            )
+
+
+def local_sender_url(config: Config, value: Any) -> str | None:
+    if not isinstance(value, str):
+        return None
+    parsed = urlsplit(value)
+    if parsed.scheme != "http" or parsed.hostname not in ("localhost", "127.0.0.1"):
+        return None
+    try:
+        port = parsed.port
+    except ValueError:
+        return None
+    return value if port == config.port else None
+
+
+def chrome_candidates() -> list[Path]:
+    if sys.platform == "darwin":
+        return [
+            Path("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"),
+            Path.home() / "Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+        ]
+    if os.name == "nt":
+        roots = [
+            os.environ.get("PROGRAMFILES"),
+            os.environ.get("PROGRAMFILES(X86)"),
+            os.environ.get("LOCALAPPDATA"),
+        ]
+        return [
+            Path(root) / "Google/Chrome/Application/chrome.exe"
+            for root in roots
+            if root
+        ]
+    return [Path(found) for name in ("google-chrome", "google-chrome-stable") if (found := shutil.which(name))]
+
+
+def open_in_chrome(url: str) -> bool:
+    for executable in chrome_candidates():
+        if not executable.is_file():
+            continue
+        options: dict[str, Any] = {
+            "stdin": subprocess.DEVNULL,
+            "stdout": subprocess.DEVNULL,
+            "stderr": subprocess.DEVNULL,
+            "close_fds": True,
+        }
+        if os.name == "nt":
+            options["creationflags"] = subprocess.DETACHED_PROCESS
+        else:
+            options["start_new_session"] = True
+        try:
+            subprocess.Popen([str(executable), url], **options)
+        except OSError:
+            continue
+        return True
+    return False
+
+
+def cmd_start(config: Config, no_open: bool) -> int:
+    session, _live, state = managed_server(config)
+    if state == "managed":
+        assert session is not None
+        print(f"TabTelly server already running (pid {session['pid']}).")
+    elif state == "different":
+        raise CliError(
+            f"Port {config.port} is used by a different TabTelly instance; it was not changed"
+        )
+    elif state == "occupied":
+        raise CliError(f"Port {config.port} is already in use by another program")
+    else:
+        child = launch_server(config)
+        try:
+            session, _live = wait_for_started(config, child)
+        except BaseException:
+            terminate_child(child)
+            raise
+        print(f"TabTelly server started (pid {session['pid']}).")
+
+    assert session is not None
+    status = fetch_status(config, session)
+    print()
+    print_urls(config, status)
+    print()
+    sender_url = local_sender_url(config, status.get("senderUrl"))
+    if not no_open:
+        if sender_url is None:
+            raise CliError("Server returned an invalid sender URL; no browser was opened")
+        if not open_in_chrome(sender_url):
+            print(
+                f"Google Chrome was not found; open {sender_url} manually.",
+                file=sys.stderr,
+            )
+    return 0
+
+
+def cmd_status(config: Config) -> int:
+    session, _live, state = managed_server(config)
+    if state == "stopped":
+        print("TabTelly server: not running")
+        return 1
+    if state == "different":
+        raise CliError(
+            f"Port {config.port} has a different TabTelly instance; local state is stale"
+        )
+    if state == "occupied":
+        raise CliError(f"Port {config.port} is in use by another program")
+    assert session is not None
+    status = fetch_status(config, session)
+    print("TabTelly server: running")
+    print(f"Process      : {session['pid']}")
+    print(f"Receiver URL: {status.get('receiverUrl', 'unavailable')}")
+    print(f"Sender URL  : {status.get('senderUrl', 'unavailable')}")
+    print(f"Pair code   : {status.get('pairCode', session.get('pairCode', 'unavailable'))}")
+    tv = status.get("tv")
+    sender = status.get("sender")
+    if isinstance(tv, dict):
+        print("TV page     : " + ("online" if tv.get("online") else "not connected"))
+    if isinstance(sender, dict):
+        print("Sender page : " + ("online" if sender.get("online") else "not open"))
+    return 0
+
+
+def unlink_stale_session(config: Config) -> None:
+    try:
+        config.session_file.unlink()
+    except FileNotFoundError:
+        pass
+    except OSError:
+        pass
+
+
+def unlink_session_if_same(config: Config, previous: dict[str, Any]) -> None:
+    current = read_session(config)
+    if current and (
+        current.get("instance") == previous.get("instance")
+        and current.get("pid") == previous.get("pid")
+        and current.get("port") == previous.get("port")
+    ):
+        unlink_stale_session(config)
+
+
+def wait_for_shutdown(config: Config, session: dict[str, Any], timeout: float = 5.0) -> bool:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        live = health(config)
+        if not live or not identities_match(session, live):
+            return True
+        time.sleep(0.1)
+    return False
+
+
+def cmd_stop(config: Config) -> int:
+    session, _live, state = managed_server(config)
+    if state == "stopped":
+        unlink_stale_session(config)
+        print("TabTelly server was not running.")
+        return 0
+    if state == "different":
+        raise CliError(
+            f"Port {config.port} has a different TabTelly instance; it was not stopped"
+        )
+    if state == "occupied":
+        raise CliError(f"Port {config.port} is used by another program; it was not stopped")
+    assert session is not None
+    response = request_json(
+        config, "/shutdown", token=session["adminToken"], method="POST", timeout=2.0
+    )
+    if not response or response.get("ok") is not True:
+        raise CliError("The server rejected the shutdown request")
+    if not wait_for_shutdown(config, session):
+        raise CliError(
+            "The authenticated server did not shut down in time; no process was signaled"
+        )
+    unlink_session_if_same(config, session)
+    print("TabTelly stopped.")
+    return 0
+
+
+def cmd_restart(config: Config, no_open: bool) -> int:
+    cmd_stop(config)
+    return cmd_start(config, no_open)
+
+
+def tail_lines(path: Path, count: int) -> list[str]:
+    try:
+        descriptor = open_regular_file(path, os.O_RDONLY)
+        with os.fdopen(descriptor, "r", encoding="utf-8", errors="replace") as handle:
+            return handle.readlines()[-count:]
+    except FileNotFoundError:
+        return []
+
+
+def cmd_log(config: Config) -> int:
+    validate_runtime_paths(config)
+    lines = tail_lines(config.log_file, 50)
+    if not lines and not config.log_file.exists():
+        raise CliError(f"No server log yet: {config.log_file}")
+    for line in lines:
+        print(line, end="")
+    try:
+        descriptor = open_regular_file(config.log_file, os.O_RDONLY)
+        with os.fdopen(descriptor, "r", encoding="utf-8", errors="replace") as handle:
+            handle.seek(0, os.SEEK_END)
+            while True:
+                line = handle.readline()
+                if line:
+                    print(line, end="", flush=True)
+                else:
+                    time.sleep(0.25)
+    except KeyboardInterrupt:
+        return 0
+
+
+def cmd_doctor(config: Config) -> int:
+    problems = 0
+    python_ok = sys.version_info >= (3, 10)
+    print(f"Python      : {sys.version.split()[0]} " + ("OK" if python_ok else "requires 3.10+"))
+    problems += not python_ok
+    server_ok = SERVER.is_file()
+    print(f"server.py   : {'OK' if server_ok else 'missing'} ({SERVER})")
+    problems += not server_ok
+    try:
+        private_directory(config)
+        runtime_ok = os.access(config.runtime, os.R_OK | os.W_OK | os.X_OK)
+    except OSError:
+        runtime_ok = False
+    print(f"Runtime     : {'OK' if runtime_ok else 'not writable'} ({config.runtime})")
+    problems += not runtime_ok
+    if config.bind == "127.0.0.1":
+        print("Bind        : 127.0.0.1 (local only; TVs cannot connect)")
+    else:
+        print("Bind        : 0.0.0.0 (local network; firewall permission may be needed)")
+    print(f"LAN address : {config.lan_ip or 'automatic detection'}")
+    _session, _live, state = managed_server(config)
+    descriptions = {
+        "managed": "running (managed by this runtime)",
+        "different": "occupied by a different TabTelly instance",
+        "occupied": "already in use by another program",
+        "stopped": "available",
+    }
+    print(f"Port {config.port:<6}: {descriptions[state]}")
+    problems += state in ("different", "occupied")
+    return 1 if problems else 0
+
+
+def parser() -> argparse.ArgumentParser:
+    result = argparse.ArgumentParser(
+        prog="tabtelly",
+        description="Start and manage the local TabTelly casting server.",
+    )
+    result.add_argument("--version", action="version", version=f"TabTelly {VERSION}")
+    commands = result.add_subparsers(dest="command", required=True)
+    start = commands.add_parser("start", help="start the server")
+    start.add_argument("--no-open", action="store_true", help="do not open the sender page")
+    commands.add_parser("stop", help="stop the server")
+    restart = commands.add_parser("restart", help="restart the server")
+    restart.add_argument("--no-open", action="store_true", help="do not open the sender page")
+    commands.add_parser("status", help="show server and connection status")
+    commands.add_parser("log", help="show and follow the server log")
+    commands.add_parser("doctor", help="check the local installation and port")
+    return result
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = parser().parse_args(argv)
+    try:
+        config = Config()
+        if args.command == "start":
+            return cmd_start(config, args.no_open)
+        if args.command == "stop":
+            return cmd_stop(config)
+        if args.command == "restart":
+            return cmd_restart(config, args.no_open)
+        if args.command == "status":
+            return cmd_status(config)
+        if args.command == "log":
+            return cmd_log(config)
+        if args.command == "doctor":
+            return cmd_doctor(config)
+    except CliError as exc:
+        print(f"tabtelly: {exc}", file=sys.stderr)
+        return 1
+    return 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
