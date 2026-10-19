@@ -7,6 +7,7 @@ signaling is intended for a trusted local network; it does not provide TLS.
 import collections
 import ipaddress
 import json
+import math
 import os
 import re
 import secrets
@@ -24,6 +25,7 @@ WEB = HERE / 'web'
 POLL_TIMEOUT = 20.0
 OFFLINE_AFTER = 35.0
 MAX_BODY = 65536
+MAX_JSON_DEPTH = 32
 MAX_QUEUE = 128
 MAX_CONNECTIONS = 48
 PAIR_ATTEMPTS = 6
@@ -281,6 +283,19 @@ class Handler(BaseHTTPRequestHandler):
             raise RequestError(400, 'Invalid JSON') from exc
         if not isinstance(obj, dict):
             raise RequestError(400, 'JSON body must be an object')
+        # Decoder recursion thresholds differ between Python versions. Enforce
+        # our own small protocol limit instead of relying on RecursionError.
+        pending = [(obj, 0)]
+        while pending:
+            value, depth = pending.pop()
+            if isinstance(value, (dict, list)):
+                depth += 1
+                if depth > MAX_JSON_DEPTH:
+                    raise RequestError(400, 'JSON nesting limit exceeded')
+                children = value.values() if isinstance(value, dict) else value
+                pending.extend((child, depth) for child in children)
+            elif isinstance(value, float) and not math.isfinite(value):
+                raise RequestError(400, 'JSON numbers must be finite')
         return obj
 
     def authorize(self, role=None, local=False):

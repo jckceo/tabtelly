@@ -148,13 +148,22 @@ class ServerTests(unittest.TestCase):
             self.assertEqual(self.request('/shutdown', {}, self.session['adminToken'])[0], 403)
 
     def test_nonstandard_numbers_and_excessive_nesting_are_rejected(self):
-        for body in ('{"code":NaN}', '{"code":' + '[' * 1500 + '0' + ']' * 1500 + '}'):
-            con = http.client.HTTPConnection('127.0.0.1', self.port, timeout=3)
-            con.request('POST', '/pair', body, {'Content-Type': 'application/json'})
-            res = con.getresponse()
-            self.assertEqual(res.status, 400)
-            res.read()
-            con.close()
+        payloads = (
+            ('NaN', '{"code":NaN}'),
+            ('overflow', '{"code":1e999}'),
+            ('depth-40', '{"code":' + '[' * 40 + '0' + ']' * 40 + '}'),
+            ('depth-1500', '{"code":' + '[' * 1500 + '0' + ']' * 1500 + '}'),
+        )
+        for label, body in payloads:
+            with self.subTest(payload=label):
+                con = http.client.HTTPConnection('127.0.0.1', self.port, timeout=3)
+                try:
+                    con.request('POST', '/pair', body, {'Content-Type': 'application/json'})
+                    res = con.getresponse()
+                    res.read()
+                    self.assertEqual(res.status, 400)
+                finally:
+                    con.close()
 
     def test_hostnames_are_case_insensitive_but_authorities_must_match(self):
         self.assertEqual(self.request('/health', headers={'Host': f'LOCALHOST:{self.port}'})[0], 200)
